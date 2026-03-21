@@ -1,0 +1,12 @@
+{
+  "baseline_logreg": {
+    "roc_auc": 0.6445566389070423,
+    "precision_at_top_share": 0.5685920577617328,
+    "lift_at_top_share": 1.4586309693090607
+  },
+  "mvp_lightgbm": {
+    "roc_auc": 0.8485747882910244,
+    "precision_at_top_share": 0.8357400722021661,
+    "lift_at_top_share": 2.143955996159032
+  }
+}
