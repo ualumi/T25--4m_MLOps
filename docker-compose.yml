@@ -1,4 +1,16 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: gateway-postgres
+    environment:
+      POSTGRES_DB: gateway_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
   inference-service:
     build:
       context: .
@@ -20,7 +32,12 @@ services:
       INFERENCE_SERVICE_URL: http://inference-service:8001
       GATEWAY_PORT: 8000
       SERVICE_API_KEY: dev-secret
+      GATEWAY_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/gateway_db
     ports:
       - "8000:8000"
     depends_on:
+      - postgres
       - inference-service
+
+volumes:
+  postgres_data:

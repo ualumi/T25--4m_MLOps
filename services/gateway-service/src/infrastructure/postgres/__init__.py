@@ -1,0 +1,1 @@
+"""PostgreSQL-адаптеры сервиса gateway."""

@@ -18,7 +18,7 @@ from src.application.use_cases.request_prediction import (  # noqa: E402
     RequestPredictionUseCase,
 )
 from src.infrastructure.http.inference_http_client import InferenceHttpClient  # noqa: E402
-from src.infrastructure.memory.session_store import InMemorySessionStore  # noqa: E402
+from src.infrastructure.postgres.session_store import PostgresSessionStore  # noqa: E402
 from src.interfaces.api.schemas import (  # noqa: E402
     ConnectRequest,
     ConnectResponse,
@@ -27,12 +27,17 @@ from src.interfaces.api.schemas import (  # noqa: E402
 )
 
 app = FastAPI(title="Gateway Service", version="1.0.0")
-session_store = InMemorySessionStore()
+
+
+@lru_cache(maxsize=1)
+def get_session_store() -> PostgresSessionStore:
+    config = get_gateway_config()
+    return PostgresSessionStore(config.database_url)
 
 
 @lru_cache(maxsize=1)
 def get_connect_use_case() -> ConnectUserUseCase:
-    return ConnectUserUseCase(store=session_store)
+    return ConnectUserUseCase(store=get_session_store())
 
 
 @lru_cache(maxsize=1)
@@ -40,7 +45,7 @@ def get_predict_use_case() -> RequestPredictionUseCase:
     config = get_gateway_config()
     client = InferenceHttpClient(config.inference_service_url)
     return RequestPredictionUseCase(
-        store=session_store, inference=client, api_key=config.service_api_key
+        store=get_session_store(), inference=client, api_key=config.service_api_key
     )
 
 

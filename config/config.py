@@ -32,6 +32,7 @@ class GatewayConfig:
     port: int
     inference_service_url: str
     service_api_key: str
+    database_url: str
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,10 @@ def get_gateway_config() -> GatewayConfig:
             "INFERENCE_SERVICE_URL", "http://inference-service:8001"
         ),
         service_api_key=os.getenv("SERVICE_API_KEY", "dev-secret"),
+        database_url=os.getenv(
+            "GATEWAY_DATABASE_URL",
+            "postgresql://postgres:postgres@postgres:5432/gateway_db",
+        ),
     )
 
 
