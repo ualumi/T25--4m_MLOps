@@ -209,3 +209,23 @@ docker compose up --build
 - через `inference-service` можно проверить техническое состояние сервиса по `health` endpoint.
 
 Таким образом деплой поднимает сразу полную рабочую схему проекта: входной сервис, ML-сервис, `PostgreSQL`, `S3`-совместимое хранилище артефактов и модель, подключённую к inference-слою.
+
+## Проверка качества кода
+
+В проект добавлены `flake8` и `mypy` для статической проверки кода.
+
+Проверка `gateway-service`:
+
+```bash
+cd services/gateway-service
+python -m flake8 src tests
+python -m mypy --config-file mypy.ini
+```
+
+Проверка `inference-service`:
+
+```bash
+cd services/inference-service
+python -m flake8 src tests
+python -m mypy --config-file mypy.ini
+```

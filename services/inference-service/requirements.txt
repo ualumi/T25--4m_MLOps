@@ -9,3 +9,5 @@ lightgbm
 pytest
 pytest-cov
 httpx
+flake8
+mypy

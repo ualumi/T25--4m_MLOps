@@ -5,3 +5,5 @@ httpx
 psycopg[binary]
 pytest
 pytest-cov
+flake8
+mypy

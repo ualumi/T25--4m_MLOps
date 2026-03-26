@@ -100,7 +100,9 @@ def save_training_outputs(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Train churn models on processed data.")
+    parser = argparse.ArgumentParser(
+        description="Train churn models on processed data."
+    )
     parser.add_argument(
         "--train-path",
         default=str(DEFAULT_TRAIN_PATH),

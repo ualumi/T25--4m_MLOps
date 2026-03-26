@@ -17,7 +17,9 @@ from src.application.use_cases.connect_user import ConnectUserUseCase  # noqa: E
 from src.application.use_cases.request_prediction import (  # noqa: E402
     RequestPredictionUseCase,
 )
-from src.infrastructure.http.inference_http_client import InferenceHttpClient  # noqa: E402
+from src.infrastructure.http.inference_http_client import (  # noqa: E402
+    InferenceHttpClient,
+)
 from src.infrastructure.postgres.session_store import PostgresSessionStore  # noqa: E402
 from src.interfaces.api.schemas import (  # noqa: E402
     ConnectRequest,

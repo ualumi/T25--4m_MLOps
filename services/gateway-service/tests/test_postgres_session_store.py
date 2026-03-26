@@ -49,9 +49,10 @@ class FakeConnection:
 
 def test_postgres_session_store_create_and_validate(monkeypatch) -> None:
     connection = FakeConnection()
+    database_url = "postgresql://postgres:postgres@localhost:5432/gateway_db"
 
-    def fake_connect(database_url: str):
-        assert database_url == "postgresql://postgres:postgres@localhost:5432/gateway_db"
+    def fake_connect(url: str):
+        assert url == database_url
         return connection
 
     monkeypatch.setattr(
@@ -59,9 +60,7 @@ def test_postgres_session_store_create_and_validate(monkeypatch) -> None:
         fake_connect,
     )
 
-    store = PostgresSessionStore(
-        "postgresql://postgres:postgres@localhost:5432/gateway_db"
-    )
+    store = PostgresSessionStore(database_url)
     session = store.create("u-1")
 
     assert session.user_id == "u-1"

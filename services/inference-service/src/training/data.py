@@ -15,7 +15,9 @@ def load_dataset(csv_path: str | Path) -> pd.DataFrame:
 
 
 def get_feature_columns(frame: pd.DataFrame) -> list[str]:
-    return [column for column in frame.columns if column not in {ID_COLUMN, TARGET_COLUMN}]
+    return [
+        column for column in frame.columns if column not in {ID_COLUMN, TARGET_COLUMN}
+    ]
 
 
 def split_features_target(
