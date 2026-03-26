@@ -22,6 +22,7 @@ from src.application.use_cases.predict_churn import (  # noqa: E402
 from src.domain.entities.prediction_input import PredictionInput  # noqa: E402
 from src.domain.entities.scoring_candidate import ScoringCandidate  # noqa: E402
 from src.infrastructure.ml.joblib_model_scorer import JoblibModelScorer  # noqa: E402
+from src.infrastructure.storage.s3_artifact_store import S3ArtifactStore  # noqa: E402
 from src.interfaces.api.schemas import (  # noqa: E402
     PredictRequest,
     PredictResponse,
@@ -34,16 +35,27 @@ app = FastAPI(title="Inference Service", version="1.0.0")
 
 
 @lru_cache(maxsize=1)
+def build_artifact_store() -> S3ArtifactStore:
+    config = get_inference_config()
+    return S3ArtifactStore(
+        endpoint_url=config.s3_endpoint_url,
+        access_key_id=config.s3_access_key_id,
+        secret_access_key=config.s3_secret_access_key,
+        region=config.s3_region,
+    )
+
+
+@lru_cache(maxsize=1)
 def build_use_case() -> PredictChurnUseCase:
     config = get_inference_config()
-    scorer = JoblibModelScorer(config.model_path)
+    scorer = JoblibModelScorer(config.model_uri, build_artifact_store())
     return PredictChurnUseCase(scorer=scorer, threshold=config.threshold)
 
 
 @lru_cache(maxsize=1)
 def build_segment_use_case() -> BuildTargetSegmentUseCase:
     config = get_inference_config()
-    scorer = JoblibModelScorer(config.model_path)
+    scorer = JoblibModelScorer(config.model_uri, build_artifact_store())
     return BuildTargetSegmentUseCase(scorer=scorer)
 
 

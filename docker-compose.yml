@@ -11,17 +11,78 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  minio:
+    image: minio/minio:latest
+    container_name: model-artifacts
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: model-artifacts-init
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        until mc alias set local http://minio:9000 minioadmin minioadmin; do sleep 1; done
+        mc mb -p local/ml-artifacts || true
+
   inference-service:
     build:
       context: .
       dockerfile: services/inference-service/Dockerfile
     container_name: inference-service
     environment:
-      MODEL_PATH: /app/models/lgb_model.joblib
+      MODEL_URI: s3://ml-artifacts/models/lgb_model.joblib
       CHURN_THRESHOLD: 0.5
       INFERENCE_PORT: 8001
+      S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_DEFAULT_REGION: us-east-1
     ports:
       - "8001:8001"
+    depends_on:
+      artifact-trainer:
+        condition: service_completed_successfully
+
+  artifact-trainer:
+    build:
+      context: .
+      dockerfile: services/inference-service/Dockerfile
+    container_name: model-artifacts-trainer
+    command:
+      - python
+      - -m
+      - src.training.train
+      - --train-path
+      - /app/data/processed.csv
+      - --test-path
+      - /app/data/test_data.csv
+      - --production-model-uri
+      - s3://ml-artifacts/models/lgb_model.joblib
+      - --baseline-model-uri
+      - s3://ml-artifacts/models/baseline_logreg.joblib
+      - --report-uri
+      - s3://ml-artifacts/reports/training_metrics.json
+    environment:
+      S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_DEFAULT_REGION: us-east-1
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
 
   gateway-service:
     build:
@@ -41,3 +102,4 @@ services:
 
 volumes:
   postgres_data:
+  minio_data:

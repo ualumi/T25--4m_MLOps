@@ -4,23 +4,25 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 from typing import Any
 
-import joblib
 from lightgbm import LGBMClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
+from src.infrastructure.storage.s3_artifact_store import S3ArtifactStore
 from src.training.data import load_dataset, split_features_target
 from src.training.evaluate import evaluate_binary_classifier, score_classifier
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_TRAIN_PATH = REPO_ROOT / "data" / "processed.csv"
 DEFAULT_TEST_PATH = REPO_ROOT / "data" / "test_data.csv"
-DEFAULT_MODEL_DIR = REPO_ROOT / "models"
-DEFAULT_REPORT_PATH = REPO_ROOT / "reports" / "training_metrics.json"
+DEFAULT_PRODUCTION_MODEL_URI = "s3://ml-artifacts/models/lgb_model.joblib"
+DEFAULT_BASELINE_MODEL_URI = "s3://ml-artifacts/models/baseline_logreg.joblib"
+DEFAULT_REPORT_URI = "s3://ml-artifacts/reports/training_metrics.json"
 
 
 def build_baseline_model() -> Pipeline:
@@ -74,19 +76,27 @@ def train_and_evaluate_model(
     return model, metrics
 
 
+def build_artifact_store() -> S3ArtifactStore:
+    return S3ArtifactStore(
+        endpoint_url=os.getenv("S3_ENDPOINT_URL"),
+        access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+        secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+        region=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
+    )
+
+
 def save_training_outputs(
+    production_model: Any,
     baseline_model: Any,
     metrics: dict[str, dict[str, float]],
-    model_dir: str | Path,
-    report_path: str | Path,
+    production_model_uri: str,
+    baseline_model_uri: str,
+    report_uri: str,
 ) -> None:
-    model_dir = Path(model_dir)
-    report_path = Path(report_path)
-    model_dir.mkdir(parents=True, exist_ok=True)
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-
-    joblib.dump(baseline_model, model_dir / "baseline_logreg.joblib")
-    report_path.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
+    artifact_store = build_artifact_store()
+    artifact_store.save_joblib(production_model_uri, production_model)
+    artifact_store.save_joblib(baseline_model_uri, baseline_model)
+    artifact_store.save_json(report_uri, metrics)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -102,14 +112,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to evaluation CSV dataset.",
     )
     parser.add_argument(
-        "--model-dir",
-        default=str(DEFAULT_MODEL_DIR),
-        help="Directory to store trained models.",
+        "--production-model-uri",
+        default=DEFAULT_PRODUCTION_MODEL_URI,
+        help="S3 URI for the production LightGBM model.",
     )
     parser.add_argument(
-        "--report-path",
-        default=str(DEFAULT_REPORT_PATH),
-        help="JSON file for evaluation metrics.",
+        "--baseline-model-uri",
+        default=DEFAULT_BASELINE_MODEL_URI,
+        help="S3 URI for the baseline model artifact.",
+    )
+    parser.add_argument(
+        "--report-uri",
+        default=DEFAULT_REPORT_URI,
+        help="S3 URI for the evaluation metrics JSON.",
     )
     parser.add_argument(
         "--top-share",
@@ -141,10 +156,12 @@ def main() -> None:
         "mvp_lightgbm": mvp_metrics,
     }
     save_training_outputs(
+        production_model=mvp_model,
         baseline_model=baseline_model,
         metrics=metrics,
-        model_dir=args.model_dir,
-        report_path=args.report_path,
+        production_model_uri=args.production_model_uri,
+        baseline_model_uri=args.baseline_model_uri,
+        report_uri=args.report_uri,
     )
     print(json.dumps(metrics, indent=2))
 

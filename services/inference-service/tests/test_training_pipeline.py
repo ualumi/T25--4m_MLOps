@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import io
 import json
 
+import joblib
 import pandas as pd
 
 from src.training import evaluate, train
@@ -33,14 +35,33 @@ def _sample_test_rows() -> list[dict[str, float | int]]:
     ]
 
 
+class FakeArtifactStore:
+    def __init__(self) -> None:
+        self.objects: dict[str, bytes] = {}
+
+    def load_joblib(self, uri: str):
+        return joblib.load(io.BytesIO(self.objects[uri]))
+
+    def save_joblib(self, uri: str, artifact) -> None:
+        buffer = io.BytesIO()
+        joblib.dump(artifact, buffer)
+        self.objects[uri] = buffer.getvalue()
+
+    def save_json(self, uri: str, payload: dict) -> None:
+        self.objects[uri] = json.dumps(payload, indent=2).encode("utf-8")
+
+
 def test_train_main_creates_models_and_report(tmp_path, monkeypatch, capsys) -> None:
     train_csv = tmp_path / "train.csv"
     test_csv = tmp_path / "test.csv"
-    model_dir = tmp_path / "models"
-    report_path = tmp_path / "reports" / "metrics.json"
+    production_model_uri = "s3://ml-artifacts/models/lgb_model.joblib"
+    baseline_model_uri = "s3://ml-artifacts/models/baseline_logreg.joblib"
+    report_uri = "s3://ml-artifacts/reports/training_metrics.json"
+    artifact_store = FakeArtifactStore()
 
     _write_dataset(train_csv, _sample_train_rows())
     _write_dataset(test_csv, _sample_test_rows())
+    monkeypatch.setattr(train, "build_artifact_store", lambda: artifact_store)
 
     monkeypatch.setattr(
         "sys.argv",
@@ -50,10 +71,12 @@ def test_train_main_creates_models_and_report(tmp_path, monkeypatch, capsys) -> 
             str(train_csv),
             "--test-path",
             str(test_csv),
-            "--model-dir",
-            str(model_dir),
-            "--report-path",
-            str(report_path),
+            "--production-model-uri",
+            production_model_uri,
+            "--baseline-model-uri",
+            baseline_model_uri,
+            "--report-uri",
+            report_uri,
             "--top-share",
             "0.5",
         ],
@@ -61,11 +84,11 @@ def test_train_main_creates_models_and_report(tmp_path, monkeypatch, capsys) -> 
 
     train.main()
 
-    assert (model_dir / "baseline_logreg.joblib").exists()
-    assert not (model_dir / "lgb_model_candidate.joblib").exists()
-    assert report_path.exists()
+    assert production_model_uri in artifact_store.objects
+    assert baseline_model_uri in artifact_store.objects
+    assert report_uri in artifact_store.objects
 
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report = json.loads(artifact_store.objects[report_uri].decode("utf-8"))
     assert "baseline_logreg" in report
     assert "mvp_lightgbm" in report
     assert "roc_auc" in report["baseline_logreg"]
@@ -77,7 +100,8 @@ def test_train_main_creates_models_and_report(tmp_path, monkeypatch, capsys) -> 
 def test_evaluate_main_prints_metrics(tmp_path, monkeypatch, capsys) -> None:
     train_csv = tmp_path / "train.csv"
     test_csv = tmp_path / "test.csv"
-    model_path = tmp_path / "baseline.joblib"
+    model_uri = "s3://ml-artifacts/models/baseline.joblib"
+    artifact_store = FakeArtifactStore()
 
     _write_dataset(train_csv, _sample_train_rows())
     _write_dataset(test_csv, _sample_test_rows())
@@ -86,14 +110,15 @@ def test_evaluate_main_prints_metrics(tmp_path, monkeypatch, capsys) -> None:
     _, train_features, train_target = train.split_features_target(train_frame)
     model = train.build_baseline_model()
     model.fit(train_features, train_target)
-    train.joblib.dump(model, model_path)
+    artifact_store.save_joblib(model_uri, model)
+    monkeypatch.setattr(evaluate, "build_artifact_store", lambda: artifact_store)
 
     monkeypatch.setattr(
         "sys.argv",
         [
             "evaluate",
-            "--model-path",
-            str(model_path),
+            "--model-uri",
+            model_uri,
             "--dataset-path",
             str(test_csv),
             "--top-share",
