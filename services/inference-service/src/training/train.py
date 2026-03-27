@@ -17,7 +17,11 @@ from src.infrastructure.storage.s3_artifact_store import S3ArtifactStore
 from src.training.data import load_dataset, split_features_target
 from src.training.evaluate import evaluate_binary_classifier, score_classifier
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
+CURRENT_FILE = Path(__file__).resolve()
+REPO_ROOT = next(
+    (parent for parent in CURRENT_FILE.parents if (parent / "data").exists()),
+    CURRENT_FILE.parents[2],
+)
 DEFAULT_TRAIN_PATH = REPO_ROOT / "data" / "processed.csv"
 DEFAULT_TEST_PATH = REPO_ROOT / "data" / "test_data.csv"
 DEFAULT_PRODUCTION_MODEL_URI = "s3://ml-artifacts/models/lgb_model.joblib"

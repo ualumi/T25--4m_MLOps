@@ -8,7 +8,11 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 
-ROOT_DIR = Path(__file__).resolve().parents[3]
+CURRENT_FILE = Path(__file__).resolve()
+ROOT_DIR = next(
+    (parent for parent in CURRENT_FILE.parents if (parent / "config").exists()),
+    CURRENT_FILE.parents[1],
+)
 if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
 
