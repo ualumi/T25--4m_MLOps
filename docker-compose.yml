@@ -44,7 +44,6 @@ services:
     container_name: inference-service
     environment:
       MODEL_URI: s3://ml-artifacts/models/lgb_model.joblib
-      CHURN_THRESHOLD: 0.5
       INFERENCE_PORT: 8001
       S3_ENDPOINT_URL: http://minio:9000
       AWS_ACCESS_KEY_ID: minioadmin

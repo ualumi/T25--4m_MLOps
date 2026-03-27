@@ -9,7 +9,6 @@ class PredictRequest(BaseModel):
 
 class PredictResponse(BaseModel):
     score: float
-    label: str
 
 
 class SegmentCandidate(BaseModel):
@@ -31,5 +30,6 @@ class SegmentUserResponse(BaseModel):
 class SegmentResponse(BaseModel):
     top_share: float
     total_users: int
-    segment_size: int
     segment: list[SegmentUserResponse]
+    top_segment_size: int
+    top_segment: list[SegmentUserResponse]

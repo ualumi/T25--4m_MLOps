@@ -14,7 +14,7 @@ class RequestPredictionUseCase:
 
     def execute(
         self, user_id: str, token: str, features: list[float]
-    ) -> dict[str, float | str]:
+    ) -> dict[str, float]:
         if not self._store.is_valid(user_id=user_id, token=token):
             raise PermissionError("Invalid session. Connect first.")
 

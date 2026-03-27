@@ -10,7 +10,7 @@ class StubConnect:
 
 class StubPredict:
     def execute(self, user_id, token, features):
-        return {"score": 0.61, "label": "churn"}
+        return {"score": 0.61}
 
 
 def test_connect_and_predict() -> None:
@@ -31,7 +31,7 @@ def test_connect_and_predict() -> None:
         },
     )
     assert predict_response.status_code == 200
-    assert predict_response.json()["label"] == "churn"
+    assert predict_response.json()["score"] == 0.61
 
     del app.state.connect_use_case
     del app.state.predict_use_case

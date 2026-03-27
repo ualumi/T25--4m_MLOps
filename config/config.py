@@ -40,7 +40,6 @@ class InferenceConfig:
     host: str
     port: int
     model_uri: str
-    threshold: float
     s3_endpoint_url: str | None
     s3_access_key_id: str | None
     s3_secret_access_key: str | None
@@ -67,7 +66,6 @@ def get_inference_config() -> InferenceConfig:
         host=os.getenv("INFERENCE_HOST", "0.0.0.0"),
         port=_int_env("INFERENCE_PORT", 8001),
         model_uri=os.getenv("MODEL_URI", "s3://ml-artifacts/models/lgb_model.joblib"),
-        threshold=_float_env("CHURN_THRESHOLD", 0.5),
         s3_endpoint_url=os.getenv("S3_ENDPOINT_URL"),
         s3_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
         s3_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),

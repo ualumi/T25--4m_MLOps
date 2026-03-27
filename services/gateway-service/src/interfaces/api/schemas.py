@@ -20,4 +20,3 @@ class PredictRequest(BaseModel):
 
 class PredictResponse(BaseModel):
     score: float
-    label: str

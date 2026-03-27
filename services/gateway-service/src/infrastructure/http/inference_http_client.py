@@ -12,7 +12,7 @@ class InferenceHttpClient(InferenceClientPort):
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
 
-    def predict(self, features: list[float], api_key: str) -> dict[str, float | str]:
+    def predict(self, features: list[float], api_key: str) -> dict[str, float]:
         response = httpx.post(
             f"{self._base_url}/predict",
             json={"features": features},

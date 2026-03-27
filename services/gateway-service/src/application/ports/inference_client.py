@@ -7,5 +7,5 @@ from abc import ABC, abstractmethod
 
 class InferenceClientPort(ABC):
     @abstractmethod
-    def predict(self, features: list[float], api_key: str) -> dict[str, float | str]:
+    def predict(self, features: list[float], api_key: str) -> dict[str, float]:
         """Отправляет данные в сервис инференса и возвращает результат."""

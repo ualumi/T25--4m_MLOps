@@ -5,7 +5,7 @@ from src.api import app
 
 class StubUseCase:
     def execute(self, payload):
-        return type("Result", (), {"score": 0.88, "label": "churn"})()
+        return type("Result", (), {"score": 0.88})()
 
 
 class StubSegmentUseCase:
@@ -19,12 +19,26 @@ class StubSegmentUseCase:
                     "probability_of_inactivity": 0.9,
                     "rank": 1,
                 },
-            )()
+            )(),
+            type(
+                "Ranked",
+                (),
+                {
+                    "user_id": "u-1",
+                    "probability_of_inactivity": 0.2,
+                    "rank": 2,
+                },
+            )(),
         ]
         return type(
             "SegmentResult",
             (),
-            {"top_share": top_share, "total_users": len(candidates), "segment": ranked},
+            {
+                "top_share": top_share,
+                "total_users": len(candidates),
+                "segment": ranked,
+                "top_segment": ranked[:1],
+            },
         )()
 
 
@@ -42,7 +56,7 @@ def test_predict_endpoint() -> None:
     response = client.post("/predict", json={"features": [0.1, 0.2, 0.3]})
 
     assert response.status_code == 200
-    assert response.json()["label"] == "churn"
+    assert response.json()["score"] == 0.88
     del app.state.use_case
 
 
@@ -63,7 +77,11 @@ def test_segment_endpoint() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["segment_size"] == 1
+    assert body["top_share"] == 0.2
+    assert body["total_users"] == 2
+    assert len(body["segment"]) == 2
+    assert body["top_segment_size"] == 1
     assert body["segment"][0]["user_id"] == "u-2"
     assert body["segment"][0]["rank"] == 1
+    assert body["top_segment"][0]["user_id"] == "u-2"
     del app.state.segment_use_case

@@ -49,7 +49,7 @@ def build_artifact_store() -> S3ArtifactStore:
 def build_use_case() -> PredictChurnUseCase:
     config = get_inference_config()
     scorer = JoblibModelScorer(config.model_uri, build_artifact_store())
-    return PredictChurnUseCase(scorer=scorer, threshold=config.threshold)
+    return PredictChurnUseCase(scorer=scorer)
 
 
 @lru_cache(maxsize=1)
@@ -72,7 +72,7 @@ def predict(payload: PredictRequest) -> PredictResponse:
     except FileNotFoundError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    return PredictResponse(score=result.score, label=result.label)
+    return PredictResponse(score=result.score)
 
 
 @app.post("/segment", response_model=SegmentResponse)
@@ -94,7 +94,6 @@ def build_segment(payload: SegmentRequest) -> SegmentResponse:
     return SegmentResponse(
         top_share=result.top_share,
         total_users=result.total_users,
-        segment_size=len(result.segment),
         segment=[
             SegmentUserResponse(
                 user_id=user.user_id,
@@ -102,5 +101,14 @@ def build_segment(payload: SegmentRequest) -> SegmentResponse:
                 rank=user.rank,
             )
             for user in result.segment
+        ],
+        top_segment_size=len(result.top_segment),
+        top_segment=[
+            SegmentUserResponse(
+                user_id=user.user_id,
+                probability_of_inactivity=user.probability_of_inactivity,
+                rank=user.rank,
+            )
+            for user in result.top_segment
         ],
     )

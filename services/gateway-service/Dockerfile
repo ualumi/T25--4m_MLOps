@@ -5,7 +5,7 @@ WORKDIR /app
 COPY services/gateway-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY common /app/common
+COPY config /app/config
 COPY services/gateway-service/src /app/src
 
 ENV INFERENCE_SERVICE_URL=http://inference-service:8001

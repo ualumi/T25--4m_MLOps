@@ -5,7 +5,7 @@ from src.infrastructure.memory.session_store import InMemorySessionStore
 
 class StubInference:
     def predict(self, features, api_key):
-        return {"score": 0.35, "label": "stay"}
+        return {"score": 0.35}
 
 
 def test_connect_user_use_case() -> None:
@@ -21,7 +21,7 @@ def test_request_prediction_use_case() -> None:
     session = store.create("u-1")
     use_case = RequestPredictionUseCase(store, StubInference(), "k")
     response = use_case.execute("u-1", session.token, [0.1, 0.2])
-    assert response["label"] == "stay"
+    assert response["score"] == 0.35
 
 
 def test_request_prediction_use_case_invalid_session() -> None:

@@ -21,6 +21,7 @@ class TargetSegmentResult:
     top_share: float
     total_users: int
     segment: list[RankedUser]
+    top_segment: list[RankedUser]
 
 
 class BuildTargetSegmentUseCase:
@@ -50,9 +51,10 @@ class BuildTargetSegmentUseCase:
             for index, (user_id, score) in enumerate(scored)
         ]
 
-        segment_size = max(1, math.ceil(len(ranked) * top_share))
+        top_segment_size = max(1, math.ceil(len(ranked) * top_share))
         return TargetSegmentResult(
             top_share=top_share,
             total_users=len(ranked),
-            segment=ranked[:segment_size],
+            segment=ranked,
+            top_segment=ranked[:top_segment_size],
         )
