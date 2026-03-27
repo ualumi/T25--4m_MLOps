@@ -1,0 +1,94 @@
+name: Coverage
+
+on:
+  push:
+    branches:
+      - master
+      - automl
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coverage-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  coverage:
+    name: ${{ matrix.service_name }} coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service_name: gateway-service
+            service_path: services/gateway-service
+          - service_name: inference-service
+            service_path: services/inference-service
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ matrix.service_path }}
+
+    env:
+      COV_FAIL_UNDER: "70"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: ${{ matrix.service_path }}/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run tests with coverage
+        run: |
+          python -m pytest \
+            --cov=src \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html:htmlcov \
+            --cov-fail-under=${COV_FAIL_UNDER}
+
+      - name: Publish coverage summary
+        run: |
+          python - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+
+          service_name = os.environ["SERVICE_NAME"]
+          root = ET.parse("coverage.xml").getroot()
+          line_rate = float(root.attrib["line-rate"]) * 100
+          threshold = float(os.environ["COV_FAIL_UNDER"])
+          status = "passed" if line_rate >= threshold else "failed"
+
+          summary_path = os.environ["GITHUB_STEP_SUMMARY"]
+          with open(summary_path, "a", encoding="utf-8") as summary:
+              summary.write(f"## {service_name}\n")
+              summary.write(f"- Line coverage: {line_rate:.2f}%\n")
+              summary.write(f"- Threshold: {threshold:.0f}% ({status})\n")
+              summary.write("- Artifacts: `coverage.xml`, `htmlcov`\n\n")
+          PY
+        env:
+          SERVICE_NAME: ${{ matrix.service_name }}
+
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.service_name }}-coverage
+          path: |
+            ${{ matrix.service_path }}/coverage.xml
+            ${{ matrix.service_path }}/htmlcov
