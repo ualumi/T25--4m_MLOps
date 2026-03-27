@@ -3,9 +3,9 @@ services:
     image: postgres:16-alpine
     container_name: gateway-postgres
     environment:
-      POSTGRES_DB: gateway_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
@@ -16,8 +16,8 @@ services:
     container_name: model-artifacts
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -34,7 +34,7 @@ services:
       - /bin/sh
       - -c
       - |
-        until mc alias set local http://minio:9000 minioadmin minioadmin; do sleep 1; done
+        until mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD}; do sleep 1; done
         mc mb -p local/ml-artifacts || true
 
   inference-service:
@@ -43,12 +43,12 @@ services:
       dockerfile: services/inference-service/Dockerfile
     container_name: inference-service
     environment:
-      MODEL_URI: s3://ml-artifacts/models/lgb_model.joblib
-      INFERENCE_PORT: 8001
-      S3_ENDPOINT_URL: http://minio:9000
-      AWS_ACCESS_KEY_ID: minioadmin
-      AWS_SECRET_ACCESS_KEY: minioadmin
-      AWS_DEFAULT_REGION: us-east-1
+      MODEL_URI: ${MODEL_URI}
+      INFERENCE_PORT: ${INFERENCE_PORT}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
     ports:
       - "8001:8001"
     depends_on:
@@ -69,16 +69,16 @@ services:
       - --test-path
       - /app/data/test_data.csv
       - --production-model-uri
-      - s3://ml-artifacts/models/lgb_model.joblib
+      - ${MODEL_URI}
       - --baseline-model-uri
-      - s3://ml-artifacts/models/baseline_logreg.joblib
+      - ${BASELINE_MODEL_URI}
       - --report-uri
-      - s3://ml-artifacts/reports/training_metrics.json
+      - ${REPORT_URI}
     environment:
-      S3_ENDPOINT_URL: http://minio:9000
-      AWS_ACCESS_KEY_ID: minioadmin
-      AWS_SECRET_ACCESS_KEY: minioadmin
-      AWS_DEFAULT_REGION: us-east-1
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
     depends_on:
       minio-init:
         condition: service_completed_successfully
@@ -89,10 +89,10 @@ services:
       dockerfile: services/gateway-service/Dockerfile
     container_name: gateway-service
     environment:
-      INFERENCE_SERVICE_URL: http://inference-service:8001
-      GATEWAY_PORT: 8000
-      SERVICE_API_KEY: dev-secret
-      GATEWAY_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/gateway_db
+      INFERENCE_SERVICE_URL: ${INFERENCE_SERVICE_URL}
+      GATEWAY_PORT: ${GATEWAY_PORT}
+      SERVICE_API_KEY: ${SERVICE_API_KEY}
+      GATEWAY_DATABASE_URL: ${GATEWAY_DATABASE_URL}
     ports:
       - "8000:8000"
     depends_on:
