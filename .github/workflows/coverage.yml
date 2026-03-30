@@ -46,12 +46,13 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-          cache-dependency-path: ${{ matrix.service_path }}/requirements.txt
+          cache-dependency-path: ${{ matrix.service_path }}/requirements-dev.txt
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
+          python -m pip install uv
+          uv pip install --system -r requirements-dev.txt
 
       - name: Run tests with coverage
         run: |
