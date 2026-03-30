@@ -4,7 +4,10 @@ extend-ignore = E203, W503
 exclude =
     .git,
     __pycache__,
+    .mypy_cache,
     .pytest_cache,
+    .venv,
+    htmlcov,
     .private-docs
 per-file-ignores =
     */__init__.py: W391

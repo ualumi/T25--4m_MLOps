@@ -1,0 +1,49 @@
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  \.git
+  | \.mypy_cache
+  | \.pytest_cache
+  | \.venv
+  | htmlcov
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 88
+py_version = 311
+skip_gitignore = true
+src_paths = ["config", "services/gateway-service/src", "services/inference-service/src"]
+
+[tool.pylint.main]
+py-version = "3.11"
+ignore-paths = [
+  "^htmlcov/.*$",
+]
+
+[tool.pylint.messages_control]
+disable = [
+  "missing-module-docstring",
+  "missing-class-docstring",
+  "missing-function-docstring",
+  "too-few-public-methods",
+  "duplicate-code",
+  "import-error",
+  "wrong-import-position",
+  "import-outside-toplevel",
+  "unused-argument",
+  "too-many-positional-arguments",
+]
+
+[tool.pylint.format]
+max-line-length = 88
+
+[tool.pylint.design]
+max-args = 8
+
+[tool.pylint.similarities]
+min-similarity-lines = 6

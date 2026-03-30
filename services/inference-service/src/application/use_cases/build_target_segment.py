@@ -32,9 +32,9 @@ class BuildTargetSegmentUseCase:
         self, candidates: list[ScoringCandidate], top_share: float = 0.2
     ) -> TargetSegmentResult:
         if not candidates:
-            raise ValueError("Candidates list cannot be empty.")
+            raise ValueError("Список кандидатов не может быть пустым.")
         if top_share <= 0 or top_share > 1:
-            raise ValueError("top_share must be in range (0, 1].")
+            raise ValueError("top_share должна быть в диапазоне (0, 1].")
 
         scored = [
             (candidate.user_id, float(self._scorer.score(candidate.features)))

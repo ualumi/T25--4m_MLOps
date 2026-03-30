@@ -53,6 +53,23 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install uv
           uv pip install --system -r requirements-dev.txt
+          uv pip install --system -r ../../services/gateway-service/requirements.txt
+          uv pip install --system -r ../../services/inference-service/requirements.txt
+
+      - name: Run black
+        run: black --check ../../config src tests
+
+      - name: Run isort
+        run: isort --check-only ../../config src tests
+
+      - name: Run flake8
+        run: flake8 ../../config src tests
+
+      - name: Run pylint
+        run: pylint ../../config src tests
+
+      - name: Run mypy
+        run: mypy --config-file mypy.ini
 
       - name: Run tests with coverage
         run: |
@@ -64,23 +81,29 @@ jobs:
             --cov-fail-under=${COV_FAIL_UNDER}
 
       - name: Publish coverage summary
+        if: always()
         run: |
           python - <<'PY'
           import os
+          import pathlib
           import xml.etree.ElementTree as ET
 
           service_name = os.environ["SERVICE_NAME"]
-          root = ET.parse("coverage.xml").getroot()
-          line_rate = float(root.attrib["line-rate"]) * 100
-          threshold = float(os.environ["COV_FAIL_UNDER"])
-          status = "passed" if line_rate >= threshold else "failed"
-
           summary_path = os.environ["GITHUB_STEP_SUMMARY"]
+          coverage_path = pathlib.Path("coverage.xml")
+
           with open(summary_path, "a", encoding="utf-8") as summary:
               summary.write(f"## {service_name}\n")
-              summary.write(f"- Line coverage: {line_rate:.2f}%\n")
-              summary.write(f"- Threshold: {threshold:.0f}% ({status})\n")
-              summary.write("- Artifacts: `coverage.xml`, `htmlcov`\n\n")
+              if coverage_path.exists():
+                  root = ET.parse(coverage_path).getroot()
+                  line_rate = float(root.attrib["line-rate"]) * 100
+                  threshold = float(os.environ["COV_FAIL_UNDER"])
+                  status = "passed" if line_rate >= threshold else "failed"
+                  summary.write(f"- Line coverage: {line_rate:.2f}%\n")
+                  summary.write(f"- Threshold: {threshold:.0f}% ({status})\n")
+                  summary.write("- Artifacts: `coverage.xml`, `htmlcov`\n\n")
+              else:
+                  summary.write("- Coverage report was not generated.\n\n")
           PY
         env:
           SERVICE_NAME: ${{ matrix.service_name }}
@@ -93,3 +116,4 @@ jobs:
           path: |
             ${{ matrix.service_path }}/coverage.xml
             ${{ matrix.service_path }}/htmlcov
+          if-no-files-found: ignore

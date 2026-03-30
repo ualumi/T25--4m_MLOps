@@ -21,15 +21,13 @@ class PostgresSessionStore(SessionStorePort):
     def _ensure_schema(self) -> None:
         with self._connect() as connection:
             with connection.cursor() as cursor:
-                cursor.execute(
-                    """
+                cursor.execute("""
                     CREATE TABLE IF NOT EXISTS user_sessions (
                         user_id TEXT PRIMARY KEY,
                         token TEXT NOT NULL,
                         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
                     )
-                    """
-                )
+                    """)
             connection.commit()
 
     def create(self, user_id: str) -> UserSession:

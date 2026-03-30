@@ -8,18 +8,27 @@ anyio==4.13.0
     # via
     #   httpx
     #   starlette
+astroid==4.0.4
+    # via pylint
+black==26.3.1
+    # via -r services/gateway-service/requirements-dev.in
 certifi==2026.2.25
     # via
     #   httpcore
     #   httpx
 click==8.3.1
-    # via uvicorn
+    # via
+    #   black
+    #   uvicorn
 colorama==0.4.6
     # via
     #   click
+    #   pylint
     #   pytest
 coverage==7.13.5
     # via pytest-cov
+dill==0.4.1
+    # via pylint
 fastapi==0.135.2
     # via -r services/gateway-service/requirements.in
 flake8==7.3.0
@@ -38,18 +47,34 @@ idna==3.11
     #   httpx
 iniconfig==2.3.0
     # via pytest
+isort==8.0.1
+    # via
+    #   -r services/gateway-service/requirements-dev.in
+    #   pylint
 librt==0.8.1
     # via mypy
 mccabe==0.7.0
-    # via flake8
+    # via
+    #   flake8
+    #   pylint
 mypy==1.19.1
     # via -r services/gateway-service/requirements-dev.in
 mypy-extensions==1.1.0
-    # via mypy
+    # via
+    #   black
+    #   mypy
 packaging==26.0
-    # via pytest
+    # via
+    #   black
+    #   pytest
 pathspec==1.0.4
-    # via mypy
+    # via
+    #   black
+    #   mypy
+platformdirs==4.9.4
+    # via
+    #   black
+    #   pylint
 pluggy==1.6.0
     # via
     #   pytest
@@ -70,16 +95,22 @@ pyflakes==3.4.0
     # via flake8
 pygments==2.20.0
     # via pytest
+pylint==4.0.5
+    # via -r services/gateway-service/requirements-dev.in
 pytest==9.0.2
     # via
     #   -r services/gateway-service/requirements-dev.in
     #   pytest-cov
 pytest-cov==7.1.0
     # via -r services/gateway-service/requirements-dev.in
+pytokens==0.4.1
+    # via black
 starlette==1.0.0
     # via fastapi
 tomli==2.4.1
     # via coverage
+tomlkit==0.14.0
+    # via pylint
 typing-extensions==4.15.0
     # via
     #   anyio
