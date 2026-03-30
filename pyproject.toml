@@ -1,3 +1,46 @@
+[project]
+name = "t25-4m-mlops"
+version = "0.1.0"
+requires-python = ">=3.11,<3.12"
+
+[project.optional-dependencies]
+gateway = [
+  "fastapi==0.135.2",
+  "uvicorn==0.42.0",
+  "pydantic==2.12.5",
+  "httpx==0.28.1",
+  "psycopg[binary]==3.3.3",
+]
+gateway-dev = [
+  "pytest==9.0.2",
+  "pytest-cov==7.1.0",
+  "black==26.3.1",
+  "flake8==7.3.0",
+  "isort==8.0.1",
+  "mypy==1.19.1",
+  "pylint==4.0.5",
+]
+inference = [
+  "fastapi==0.135.2",
+  "uvicorn==0.42.0",
+  "pydantic==2.12.5",
+  "joblib==1.5.3",
+  "boto3==1.42.78",
+  "scikit-learn==1.8.0",
+  "pandas==3.0.1",
+  "lightgbm==4.6.0",
+  "httpx==0.28.1",
+]
+inference-dev = [
+  "pytest==9.0.2",
+  "pytest-cov==7.1.0",
+  "black==26.3.1",
+  "flake8==7.3.0",
+  "isort==8.0.1",
+  "mypy==1.19.1",
+  "pylint==4.0.5",
+]
+
 [tool.black]
 line-length = 88
 target-version = ["py311"]
