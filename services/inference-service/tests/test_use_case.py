@@ -23,6 +23,22 @@ def test_predict_churn_use_case_negative() -> None:
     assert result.score == 0.2
 
 
+def test_predict_churn_use_case_batch() -> None:
+    use_case = PredictChurnUseCase(scorer=StubScorer())
+    result = use_case.execute_batch(
+        [
+            {"client_id": "c1", "features": [1.0, 1.0]},
+            {"client_id": "c2", "features": [0.2, 0.1]},
+        ]
+    )
+
+    assert len(result.predictions) == 2
+    assert result.predictions[0].client_id == "c1"
+    assert result.predictions[0].score == 0.8
+    assert result.predictions[1].client_id == "c2"
+    assert result.predictions[1].score == 0.2
+
+
 def test_build_target_segment_ranks_all_users() -> None:
     use_case = BuildTargetSegmentUseCase(scorer=StubScorer())
     result = use_case.execute(

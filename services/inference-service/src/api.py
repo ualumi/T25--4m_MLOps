@@ -28,6 +28,8 @@ from src.domain.entities.scoring_candidate import ScoringCandidate  # noqa: E402
 from src.infrastructure.ml.joblib_model_scorer import JoblibModelScorer  # noqa: E402
 from src.infrastructure.storage.s3_artifact_store import S3ArtifactStore  # noqa: E402
 from src.interfaces.api.schemas import (  # noqa: E402
+    BatchPredictRequest,
+    BatchPredictResponse,
     PredictRequest,
     PredictResponse,
     SegmentRequest,
@@ -77,6 +79,27 @@ def predict(payload: PredictRequest) -> PredictResponse:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     return PredictResponse(score=result.score)
+
+
+@app.post("/predict/batch", response_model=BatchPredictResponse)
+def predict_batch(payload: BatchPredictRequest) -> BatchPredictResponse:
+    use_case = getattr(app.state, "use_case", None) or build_use_case()
+    try:
+        result = use_case.execute_batch(
+            clients=[
+                {"client_id": client.client_id, "features": client.features}
+                for client in payload.clients
+            ]
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return BatchPredictResponse(
+        predictions=[
+            {"client_id": item.client_id, "score": item.score}
+            for item in result.predictions
+        ]
+    )
 
 
 @app.post("/segment", response_model=SegmentResponse)

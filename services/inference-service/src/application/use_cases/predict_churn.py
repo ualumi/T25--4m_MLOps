@@ -11,6 +11,17 @@ class PredictResult:
     score: float
 
 
+@dataclass(frozen=True)
+class BatchPredictResultItem:
+    client_id: str
+    score: float
+
+
+@dataclass(frozen=True)
+class BatchPredictResult:
+    predictions: list[BatchPredictResultItem]
+
+
 class PredictChurnUseCase:
     def __init__(self, scorer: ScoringPort) -> None:
         self._scorer = scorer
@@ -18,3 +29,15 @@ class PredictChurnUseCase:
     def execute(self, payload: PredictionInput) -> PredictResult:
         score = self._scorer.score(payload.features)
         return PredictResult(score=score)
+
+    def execute_batch(
+        self, clients: list[dict[str, str | list[float]]]
+    ) -> BatchPredictResult:
+        predictions = [
+            BatchPredictResultItem(
+                client_id=str(client["client_id"]),
+                score=float(self._scorer.score(client["features"])),
+            )
+            for client in clients
+        ]
+        return BatchPredictResult(predictions=predictions)

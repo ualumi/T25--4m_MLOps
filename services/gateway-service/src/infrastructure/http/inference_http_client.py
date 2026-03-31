@@ -21,3 +21,15 @@ class InferenceHttpClient(InferenceClientPort):
         )
         response.raise_for_status()
         return response.json()
+
+    def predict_batch(
+        self, clients: list[dict[str, str | list[float]]], api_key: str
+    ) -> dict[str, list[dict[str, str | float]]]:
+        response = httpx.post(
+            f"{self._base_url}/predict/batch",
+            json={"clients": clients},
+            headers={"x-api-key": api_key},
+            timeout=self._timeout,
+        )
+        response.raise_for_status()
+        return response.json()

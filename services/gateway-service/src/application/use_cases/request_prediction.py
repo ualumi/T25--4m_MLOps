@@ -19,3 +19,14 @@ class RequestPredictionUseCase:
             raise PermissionError("Invalid session. Connect first.")
 
         return self._inference.predict(features=features, api_key=self._api_key)
+
+    def execute_batch(
+        self,
+        user_id: str,
+        token: str,
+        clients: list[dict[str, str | list[float]]],
+    ) -> dict[str, list[dict[str, str | float]]]:
+        if not self._store.is_valid(user_id=user_id, token=token):
+            raise PermissionError("Invalid session. Connect first.")
+
+        return self._inference.predict_batch(clients=clients, api_key=self._api_key)

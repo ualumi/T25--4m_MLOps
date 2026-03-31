@@ -2,10 +2,28 @@ from fastapi.testclient import TestClient
 
 from src.api import app
 
+VALID_FEATURES = [0.1] * 28
+
 
 class StubUseCase:
     def execute(self, payload):
         return type("Result", (), {"score": 0.88})()
+
+    def execute_batch(self, clients):
+        return type(
+            "BatchResult",
+            (),
+            {
+                "predictions": [
+                    type(
+                        "Prediction",
+                        (),
+                        {"client_id": client["client_id"], "score": 0.88},
+                    )()
+                    for client in clients
+                ]
+            },
+        )()
 
 
 class StubSegmentUseCase:
@@ -53,10 +71,49 @@ def test_predict_endpoint() -> None:
     app.state.use_case = StubUseCase()
     client = TestClient(app)
 
-    response = client.post("/predict", json={"features": [0.1, 0.2, 0.3]})
+    response = client.post("/predict", json={"features": VALID_FEATURES})
 
     assert response.status_code == 200
     assert response.json()["score"] == 0.88
+    del app.state.use_case
+
+
+def test_predict_batch_endpoint() -> None:
+    app.state.use_case = StubUseCase()
+    client = TestClient(app)
+
+    response = client.post(
+        "/predict/batch",
+        json={
+            "clients": [
+                {"client_id": "c-1", "features": VALID_FEATURES},
+                {"client_id": "c-2", "features": VALID_FEATURES},
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["predictions"]) == 2
+    assert body["predictions"][0]["client_id"] == "c-1"
+    assert body["predictions"][0]["score"] == 0.88
+    del app.state.use_case
+
+
+def test_predict_batch_endpoint_rejects_invalid_feature_count() -> None:
+    app.state.use_case = StubUseCase()
+    client = TestClient(app)
+
+    response = client.post(
+        "/predict/batch",
+        json={
+            "clients": [
+                {"client_id": "c-1", "features": [0.1, 0.2, 0.3]},
+            ]
+        },
+    )
+
+    assert response.status_code == 422
     del app.state.use_case
 
 
@@ -68,8 +125,8 @@ def test_segment_endpoint() -> None:
         "/segment",
         json={
             "users": [
-                {"user_id": "u-1", "features": [0.1, 0.2]},
-                {"user_id": "u-2", "features": [1.0, 0.8]},
+                {"user_id": "u-1", "features": VALID_FEATURES},
+                {"user_id": "u-2", "features": VALID_FEATURES},
             ],
             "top_share": 0.2,
         },

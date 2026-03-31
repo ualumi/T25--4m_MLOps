@@ -83,6 +83,8 @@ psycopg==3.3.3
     # via -r services/gateway-service/requirements.in
 psycopg-binary==3.3.3
     # via psycopg
+python-multipart==0.0.22
+    # via -r services/gateway-service/requirements.in
 pycodestyle==2.14.0
     # via flake8
 pydantic==2.12.5

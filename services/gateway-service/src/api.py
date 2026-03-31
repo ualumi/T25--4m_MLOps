@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import csv
+import io
+import json
 import sys
 from functools import lru_cache
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from pydantic import ValidationError
 
 CURRENT_FILE = Path(__file__).resolve()
 ROOT_DIR = next(
@@ -26,6 +30,8 @@ from src.infrastructure.http.inference_http_client import (  # noqa: E402
 )
 from src.infrastructure.postgres.session_store import PostgresSessionStore  # noqa: E402
 from src.interfaces.api.schemas import (  # noqa: E402
+    BatchPredictRequest,
+    BatchPredictResponse,
     ConnectRequest,
     ConnectResponse,
     PredictRequest,
@@ -82,3 +88,121 @@ def predict(payload: PredictRequest) -> PredictResponse:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     return PredictResponse(score=float(result["score"]))
+
+
+def _run_batch_prediction(payload: BatchPredictRequest) -> BatchPredictResponse:
+    use_case = getattr(app.state, "predict_use_case", None) or get_predict_use_case()
+    try:
+        result = use_case.execute_batch(
+            user_id=payload.user_id,
+            token=payload.session_token,
+            clients=[
+                {"client_id": client.client_id, "features": client.features}
+                for client in payload.clients
+            ],
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    return BatchPredictResponse(
+        predictions=[
+            {
+                "client_id": str(item["client_id"]),
+                "score": float(item["score"]),
+            }
+            for item in result["predictions"]
+        ]
+    )
+
+
+def _parse_json_clients(raw_content: bytes) -> list[dict[str, str | list[float]]]:
+    try:
+        payload = json.loads(raw_content.decode("utf-8-sig"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("Invalid JSON file.") from exc
+
+    if isinstance(payload, list):
+        return payload
+
+    if isinstance(payload, dict) and isinstance(payload.get("clients"), list):
+        return payload["clients"]
+
+    raise ValueError("JSON file must be an array or an object with 'clients'.")
+
+
+def _parse_csv_clients(raw_content: bytes) -> list[dict[str, str | list[float]]]:
+    try:
+        text = raw_content.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ValueError("CSV file must be UTF-8 encoded.") from exc
+
+    reader = csv.DictReader(io.StringIO(text))
+    if not reader.fieldnames:
+        raise ValueError("CSV file must contain a header row.")
+    if "client_id" not in reader.fieldnames:
+        raise ValueError("CSV file must contain a 'client_id' column.")
+
+    feature_columns = [column for column in reader.fieldnames if column != "client_id"]
+    clients: list[dict[str, str | list[float]]] = []
+
+    for row_number, row in enumerate(reader, start=2):
+        client_id = (row.get("client_id") or "").strip()
+        if not client_id:
+            raise ValueError(f"Row {row_number} has an empty client_id.")
+
+        try:
+            features = [float(row[column]) for column in feature_columns]
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Row {row_number} contains non-numeric feature values."
+            ) from exc
+
+        clients.append({"client_id": client_id, "features": features})
+
+    if not clients:
+        raise ValueError("CSV file must contain at least one client row.")
+
+    return clients
+
+
+async def _build_batch_request_from_upload(
+    user_id: str, session_token: str, file: UploadFile
+) -> BatchPredictRequest:
+    filename = file.filename or ""
+    suffix = Path(filename).suffix.lower()
+    raw_content = await file.read()
+
+    if suffix == ".json":
+        clients = _parse_json_clients(raw_content)
+    elif suffix == ".csv":
+        clients = _parse_csv_clients(raw_content)
+    else:
+        raise HTTPException(
+            status_code=400, detail="Supported file formats are .json and .csv."
+        )
+
+    try:
+        return BatchPredictRequest(
+            user_id=user_id,
+            session_token=session_token,
+            clients=clients,
+        )
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors()) from exc
+
+
+@app.post("/predict/batch", response_model=BatchPredictResponse)
+def predict_batch(payload: BatchPredictRequest) -> BatchPredictResponse:
+    return _run_batch_prediction(payload)
+
+
+@app.post("/predict/upload", response_model=BatchPredictResponse)
+async def predict_upload(
+    user_id: str = Form(...),
+    session_token: str = Form(...),
+    file: UploadFile = File(...),
+) -> BatchPredictResponse:
+    payload = await _build_batch_request_from_upload(user_id, session_token, file)
+    return _run_batch_prediction(payload)
