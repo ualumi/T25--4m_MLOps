@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,23 @@ DEFAULT_BASELINE_MODEL_URI = "s3://ml-artifacts/models/baseline_logreg.joblib"
 DEFAULT_REPORT_URI = "s3://ml-artifacts/reports/training_metrics.json"
 DEFAULT_FEATURE_SCHEMA_URI = "s3://ml-artifacts/models/feature_schema.json"
 DEFAULT_MODEL_INFO_URI = "s3://ml-artifacts/models/model_info.json"
+
+
+@dataclass(frozen=True)
+class TrainingArtifactUris:
+    production_model_uri: str
+    baseline_model_uri: str
+    report_uri: str
+    feature_schema_uri: str
+    model_info_uri: str
+
+
+@dataclass(frozen=True)
+class TrainingRunContext:
+    train_path: str | Path
+    test_path: str | Path
+    top_share: float
+    artifact_uris: TrainingArtifactUris
 
 
 def build_baseline_model() -> Pipeline:
@@ -113,29 +131,23 @@ def build_model_info(
     production_model: Any,
     baseline_model: Any,
     metrics: dict[str, dict[str, float]],
-    train_path: str | Path,
-    test_path: str | Path,
-    top_share: float,
-    production_model_uri: str,
-    baseline_model_uri: str,
-    report_uri: str,
-    feature_schema_uri: str,
+    run_context: TrainingRunContext,
 ) -> dict[str, Any]:
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "train_path": str(train_path),
-        "test_path": str(test_path),
-        "top_share": top_share,
+        "train_path": str(run_context.train_path),
+        "test_path": str(run_context.test_path),
+        "top_share": run_context.top_share,
         "production_model": {
             "type": type(production_model).__name__,
-            "uri": production_model_uri,
+            "uri": run_context.artifact_uris.production_model_uri,
         },
         "baseline_model": {
             "type": type(baseline_model).__name__,
-            "uri": baseline_model_uri,
+            "uri": run_context.artifact_uris.baseline_model_uri,
         },
-        "report_uri": report_uri,
-        "feature_schema_uri": feature_schema_uri,
+        "report_uri": run_context.artifact_uris.report_uri,
+        "feature_schema_uri": run_context.artifact_uris.feature_schema_uri,
         "metrics_summary": metrics,
     }
 
@@ -144,20 +156,16 @@ def save_training_outputs(
     production_model: Any,
     baseline_model: Any,
     metrics: dict[str, dict[str, float]],
-    production_model_uri: str,
-    baseline_model_uri: str,
-    report_uri: str,
     feature_schema: dict[str, Any],
-    feature_schema_uri: str,
     model_info: dict[str, Any],
-    model_info_uri: str,
+    artifact_uris: TrainingArtifactUris,
 ) -> None:
     artifact_store = build_artifact_store()
-    artifact_store.save_joblib(production_model_uri, production_model)
-    artifact_store.save_joblib(baseline_model_uri, baseline_model)
-    artifact_store.save_json(report_uri, metrics)
-    artifact_store.save_json(feature_schema_uri, feature_schema)
-    artifact_store.save_json(model_info_uri, model_info)
+    artifact_store.save_joblib(artifact_uris.production_model_uri, production_model)
+    artifact_store.save_joblib(artifact_uris.baseline_model_uri, baseline_model)
+    artifact_store.save_json(artifact_uris.report_uri, metrics)
+    artifact_store.save_json(artifact_uris.feature_schema_uri, feature_schema)
+    artifact_store.save_json(artifact_uris.model_info_uri, model_info)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -210,6 +218,19 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_parser().parse_args()
+    artifact_uris = TrainingArtifactUris(
+        production_model_uri=args.production_model_uri,
+        baseline_model_uri=args.baseline_model_uri,
+        report_uri=args.report_uri,
+        feature_schema_uri=args.feature_schema_uri,
+        model_info_uri=args.model_info_uri,
+    )
+    run_context = TrainingRunContext(
+        train_path=args.train_path,
+        test_path=args.test_path,
+        top_share=args.top_share,
+        artifact_uris=artifact_uris,
+    )
 
     baseline_model, baseline_metrics = train_and_evaluate_model(
         model=build_baseline_model(),
@@ -233,25 +254,15 @@ def main() -> None:
         production_model=mvp_model,
         baseline_model=baseline_model,
         metrics=metrics,
-        train_path=args.train_path,
-        test_path=args.test_path,
-        top_share=args.top_share,
-        production_model_uri=args.production_model_uri,
-        baseline_model_uri=args.baseline_model_uri,
-        report_uri=args.report_uri,
-        feature_schema_uri=args.feature_schema_uri,
+        run_context=run_context,
     )
     save_training_outputs(
         production_model=mvp_model,
         baseline_model=baseline_model,
         metrics=metrics,
-        production_model_uri=args.production_model_uri,
-        baseline_model_uri=args.baseline_model_uri,
-        report_uri=args.report_uri,
         feature_schema=feature_schema,
-        feature_schema_uri=args.feature_schema_uri,
         model_info=model_info,
-        model_info_uri=args.model_info_uri,
+        artifact_uris=artifact_uris,
     )
     print(json.dumps(metrics, indent=2))
 
