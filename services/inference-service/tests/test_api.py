@@ -18,7 +18,7 @@ class StubUseCase:
                     type(
                         "Prediction",
                         (),
-                        {"client_id": client["client_id"], "score": 0.88},
+                        {"client_id": client.client_id, "score": 0.88},
                     )()
                     for client in clients
                 ]

@@ -16,7 +16,7 @@ def test_parse_json_clients_accepts_array_payload() -> None:
     clients = _parse_json_clients(raw_content)
 
     assert len(clients) == 2
-    assert clients[0]["client_id"] == "c-1"
+    assert clients[0].client_id == "c-1"
 
 
 def test_parse_json_clients_accepts_object_with_clients() -> None:
@@ -27,7 +27,7 @@ def test_parse_json_clients_accepts_object_with_clients() -> None:
     clients = _parse_json_clients(raw_content)
 
     assert len(clients) == 1
-    assert clients[0]["client_id"] == "c-1"
+    assert clients[0].client_id == "c-1"
 
 
 def test_parse_json_clients_rejects_invalid_payload_shape() -> None:
@@ -55,8 +55,8 @@ def test_parse_csv_clients_parses_rows() -> None:
     clients = _parse_csv_clients(raw_content)
 
     assert len(clients) == 2
-    assert clients[0]["client_id"] == "c-1"
-    assert clients[0]["features"] == VALID_FEATURES
+    assert clients[0].client_id == "c-1"
+    assert clients[0].features == VALID_FEATURES
 
 
 def test_parse_csv_clients_rejects_missing_client_id_column() -> None:

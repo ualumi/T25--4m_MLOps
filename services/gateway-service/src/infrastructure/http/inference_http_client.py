@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import httpx
 
+from src.application.ports.inference_client import BatchPredictionClientPayload
+from src.application.ports.inference_client import BatchPredictionResult
 from src.application.ports.inference_client import InferenceClientPort
 
 
@@ -23,8 +25,8 @@ class InferenceHttpClient(InferenceClientPort):
         return response.json()
 
     def predict_batch(
-        self, clients: list[dict[str, str | list[float]]], api_key: str
-    ) -> dict[str, list[dict[str, str | float]]]:
+        self, clients: list[BatchPredictionClientPayload], api_key: str
+    ) -> BatchPredictionResult:
         response = httpx.post(
             f"{self._base_url}/predict/batch",
             json={"clients": clients},

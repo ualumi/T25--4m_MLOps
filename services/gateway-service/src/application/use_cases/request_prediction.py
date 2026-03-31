@@ -1,5 +1,7 @@
 """Сценарий запроса предсказания у сервиса инференса."""
 
+from src.application.ports.inference_client import BatchPredictionClientPayload
+from src.application.ports.inference_client import BatchPredictionResult
 from src.application.ports.inference_client import InferenceClientPort
 from src.application.ports.session_store import SessionStorePort
 
@@ -24,8 +26,8 @@ class RequestPredictionUseCase:
         self,
         user_id: str,
         token: str,
-        clients: list[dict[str, str | list[float]]],
-    ) -> dict[str, list[dict[str, str | float]]]:
+        clients: list[BatchPredictionClientPayload],
+    ) -> BatchPredictionResult:
         if not self._store.is_valid(user_id=user_id, token=token):
             raise PermissionError("Invalid session. Connect first.")
 

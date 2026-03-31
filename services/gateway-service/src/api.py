@@ -8,6 +8,7 @@ import json
 import sys
 from functools import lru_cache
 from pathlib import Path
+from typing import cast
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import ValidationError
@@ -30,6 +31,8 @@ from src.infrastructure.http.inference_http_client import (  # noqa: E402
 )
 from src.infrastructure.postgres.session_store import PostgresSessionStore  # noqa: E402
 from src.interfaces.api.schemas import (  # noqa: E402
+    BatchPredictClient,
+    BatchPredictItemResponse,
     BatchPredictRequest,
     BatchPredictResponse,
     ConnectRequest,
@@ -108,31 +111,36 @@ def _run_batch_prediction(payload: BatchPredictRequest) -> BatchPredictResponse:
 
     return BatchPredictResponse(
         predictions=[
-            {
-                "client_id": str(item["client_id"]),
-                "score": float(item["score"]),
-            }
+            BatchPredictItemResponse(
+                client_id=item["client_id"],
+                score=item["score"],
+            )
             for item in result["predictions"]
         ]
     )
 
 
-def _parse_json_clients(raw_content: bytes) -> list[dict[str, str | list[float]]]:
+def _parse_json_clients(raw_content: bytes) -> list[BatchPredictClient]:
     try:
         payload = json.loads(raw_content.decode("utf-8-sig"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError("Invalid JSON file.") from exc
 
+    raw_clients: list[object]
     if isinstance(payload, list):
-        return payload
+        raw_clients = cast(list[object], payload)
+    elif isinstance(payload, dict) and isinstance(payload.get("clients"), list):
+        raw_clients = cast(list[object], payload["clients"])
+    else:
+        raise ValueError("JSON file must be an array or an object with 'clients'.")
 
-    if isinstance(payload, dict) and isinstance(payload.get("clients"), list):
-        return payload["clients"]
+    try:
+        return [BatchPredictClient.model_validate(client) for client in raw_clients]
+    except ValidationError as exc:
+        raise ValueError("JSON file содержит некорректные данные клиентов.") from exc
 
-    raise ValueError("JSON file must be an array or an object with 'clients'.")
 
-
-def _parse_csv_clients(raw_content: bytes) -> list[dict[str, str | list[float]]]:
+def _parse_csv_clients(raw_content: bytes) -> list[BatchPredictClient]:
     try:
         text = raw_content.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
@@ -145,7 +153,7 @@ def _parse_csv_clients(raw_content: bytes) -> list[dict[str, str | list[float]]]
         raise ValueError("CSV file must contain a 'client_id' column.")
 
     feature_columns = [column for column in reader.fieldnames if column != "client_id"]
-    clients: list[dict[str, str | list[float]]] = []
+    clients: list[BatchPredictClient] = []
 
     for row_number, row in enumerate(reader, start=2):
         client_id = (row.get("client_id") or "").strip()
@@ -159,7 +167,7 @@ def _parse_csv_clients(raw_content: bytes) -> list[dict[str, str | list[float]]]
                 f"Row {row_number} contains non-numeric feature values."
             ) from exc
 
-        clients.append({"client_id": client_id, "features": features})
+        clients.append(BatchPredictClient(client_id=client_id, features=features))
 
     if not clients:
         raise ValueError("CSV file must contain at least one client row.")

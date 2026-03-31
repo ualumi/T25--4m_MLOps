@@ -21,6 +21,7 @@ from src.application.use_cases.build_target_segment import (  # noqa: E402
     BuildTargetSegmentUseCase,
 )
 from src.application.use_cases.predict_churn import (  # noqa: E402
+    BatchPredictClientPayload,
     PredictChurnUseCase,
 )
 from src.domain.entities.prediction_input import PredictionInput  # noqa: E402
@@ -28,6 +29,7 @@ from src.domain.entities.scoring_candidate import ScoringCandidate  # noqa: E402
 from src.infrastructure.ml.joblib_model_scorer import JoblibModelScorer  # noqa: E402
 from src.infrastructure.storage.s3_artifact_store import S3ArtifactStore  # noqa: E402
 from src.interfaces.api.schemas import (  # noqa: E402
+    BatchPredictItemResponse,
     BatchPredictRequest,
     BatchPredictResponse,
     PredictRequest,
@@ -87,7 +89,10 @@ def predict_batch(payload: BatchPredictRequest) -> BatchPredictResponse:
     try:
         result = use_case.execute_batch(
             clients=[
-                {"client_id": client.client_id, "features": client.features}
+                BatchPredictClientPayload(
+                    client_id=client.client_id,
+                    features=client.features,
+                )
                 for client in payload.clients
             ]
         )
@@ -96,7 +101,7 @@ def predict_batch(payload: BatchPredictRequest) -> BatchPredictResponse:
 
     return BatchPredictResponse(
         predictions=[
-            {"client_id": item.client_id, "score": item.score}
+            BatchPredictItemResponse(client_id=item.client_id, score=item.score)
             for item in result.predictions
         ]
     )

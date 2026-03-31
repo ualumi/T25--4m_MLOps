@@ -3,6 +3,21 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import TypedDict
+
+
+class BatchPredictionClientPayload(TypedDict):
+    client_id: str
+    features: list[float]
+
+
+class BatchPredictionResultItem(TypedDict):
+    client_id: str
+    score: float
+
+
+class BatchPredictionResult(TypedDict):
+    predictions: list[BatchPredictionResultItem]
 
 
 class InferenceClientPort(ABC):
@@ -12,6 +27,6 @@ class InferenceClientPort(ABC):
 
     @abstractmethod
     def predict_batch(
-        self, clients: list[dict[str, str | list[float]]], api_key: str
-    ) -> dict[str, list[dict[str, str | float]]]:
+        self, clients: list[BatchPredictionClientPayload], api_key: str
+    ) -> BatchPredictionResult:
         """Отправляет батч данных в сервис инференса и возвращает результаты."""
