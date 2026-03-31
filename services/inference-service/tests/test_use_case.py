@@ -1,6 +1,8 @@
 from src.application.use_cases.build_target_segment import BuildTargetSegmentUseCase
-from src.application.use_cases.predict_churn import BatchPredictClientPayload
-from src.application.use_cases.predict_churn import PredictChurnUseCase
+from src.application.use_cases.predict_churn import (
+    BatchPredictClientPayload,
+    PredictChurnUseCase,
+)
 from src.domain.entities.prediction_input import PredictionInput
 from src.domain.entities.scoring_candidate import ScoringCandidate
 
