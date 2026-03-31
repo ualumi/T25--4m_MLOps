@@ -8,7 +8,7 @@ import json
 import sys
 from functools import lru_cache
 from pathlib import Path
-from typing import cast
+from typing import Mapping, cast
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import ValidationError
@@ -93,8 +93,8 @@ def get_prediction_result_store() -> S3DatasetStore:
 
 def _save_prediction_result(
     user_id: str,
-    request_payload: dict[str, object],
-    response_payload: dict[str, object],
+    request_payload: Mapping[str, object],
+    response_payload: Mapping[str, object],
     result_kind: str,
 ) -> str:
     result_store = getattr(app.state, "prediction_result_store", None) or (
