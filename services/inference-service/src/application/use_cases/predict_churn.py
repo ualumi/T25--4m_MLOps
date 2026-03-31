@@ -36,7 +36,9 @@ class PredictChurnUseCase:
         score = self._scorer.score(payload.features)
         return PredictResult(score=score)
 
-    def execute_batch(self, clients: list[BatchPredictClientPayload]) -> BatchPredictResult:
+    def execute_batch(
+        self, clients: list[BatchPredictClientPayload]
+    ) -> BatchPredictResult:
         predictions = [
             BatchPredictResultItem(
                 client_id=client.client_id,

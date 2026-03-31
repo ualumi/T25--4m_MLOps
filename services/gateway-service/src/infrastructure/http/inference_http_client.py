@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import httpx
 
-from src.application.ports.inference_client import BatchPredictionClientPayload
-from src.application.ports.inference_client import BatchPredictionResult
-from src.application.ports.inference_client import InferenceClientPort
+from src.application.ports.inference_client import (
+    BatchPredictionClientPayload,
+    BatchPredictionResult,
+    InferenceClientPort,
+)
 
 
 class InferenceHttpClient(InferenceClientPort):

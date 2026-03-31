@@ -1,8 +1,10 @@
 """Сценарий запроса предсказания у сервиса инференса."""
 
-from src.application.ports.inference_client import BatchPredictionClientPayload
-from src.application.ports.inference_client import BatchPredictionResult
-from src.application.ports.inference_client import InferenceClientPort
+from src.application.ports.inference_client import (
+    BatchPredictionClientPayload,
+    BatchPredictionResult,
+    InferenceClientPort,
+)
 from src.application.ports.session_store import SessionStorePort
 
 
