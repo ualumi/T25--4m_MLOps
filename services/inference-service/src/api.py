@@ -86,6 +86,7 @@ def _build_segment_result_uri() -> str:
 def _save_segment_result(
     request_payload: dict[str, object],
     response_payload: dict[str, object],
+    record_count: int,
 ) -> str:
     artifact_store = (
         getattr(app.state, "artifact_store", None) or build_artifact_store()
@@ -94,6 +95,11 @@ def _save_segment_result(
     artifact_store.save_json(
         result_uri,
         {
+            "metadata": {
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "endpoint": "/segment",
+                "record_count": record_count,
+            },
             "request": request_payload,
             "response": response_payload,
         },
@@ -183,6 +189,7 @@ def build_segment(payload: SegmentRequest) -> SegmentResponse:
     result_uri = _save_segment_result(
         request_payload=payload.model_dump(),
         response_payload=response_payload,
+        record_count=len(payload.users),
     )
     return SegmentResponse(
         top_share=result.top_share,

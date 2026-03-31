@@ -4,6 +4,8 @@ from src.application.ports.inference_client import (
     BatchPredictionClientPayload,
     BatchPredictionResult,
     InferenceClientPort,
+    SegmentClientPayload,
+    SegmentResult,
 )
 from src.application.ports.session_store import SessionStorePort
 
@@ -34,3 +36,19 @@ class RequestPredictionUseCase:
             raise PermissionError("Invalid session. Connect first.")
 
         return self._inference.predict_batch(clients=clients, api_key=self._api_key)
+
+    def execute_segment(
+        self,
+        user_id: str,
+        token: str,
+        users: list[SegmentClientPayload],
+        top_share: float,
+    ) -> SegmentResult:
+        if not self._store.is_valid(user_id=user_id, token=token):
+            raise PermissionError("Invalid session. Connect first.")
+
+        return self._inference.segment(
+            users=users,
+            top_share=top_share,
+            api_key=self._api_key,
+        )

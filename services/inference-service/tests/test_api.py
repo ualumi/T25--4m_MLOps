@@ -152,5 +152,8 @@ def test_segment_endpoint() -> None:
     assert body["top_segment"][0]["user_id"] == "u-2"
     assert body["result_uri"].startswith("s3://")
     assert len(app.state.artifact_store.saved) == 1
+    metadata = app.state.artifact_store.saved[0]["payload"]["metadata"]
+    assert metadata["endpoint"] == "/segment"
+    assert metadata["record_count"] == 2
     del app.state.segment_use_case
     del app.state.artifact_store

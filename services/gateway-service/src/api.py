@@ -6,6 +6,7 @@ import csv
 import io
 import json
 import sys
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Mapping, cast
@@ -40,6 +41,9 @@ from src.interfaces.api.schemas import (  # noqa: E402
     ConnectResponse,
     PredictRequest,
     PredictResponse,
+    SegmentRequest,
+    SegmentResponse,
+    SegmentUserResponse,
 )
 
 app = FastAPI(title="Gateway Service", version="1.0.0")
@@ -96,6 +100,8 @@ def _save_prediction_result(
     request_payload: Mapping[str, object],
     response_payload: Mapping[str, object],
     result_kind: str,
+    endpoint: str,
+    record_count: int,
 ) -> str:
     result_store = getattr(app.state, "prediction_result_store", None) or (
         get_prediction_result_store()
@@ -104,6 +110,11 @@ def _save_prediction_result(
         user_id=user_id,
         name="prediction-result.json",
         payload={
+            "metadata": {
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "endpoint": endpoint,
+                "record_count": record_count,
+            },
             "request": request_payload,
             "response": response_payload,
         },
@@ -143,6 +154,8 @@ def predict(payload: PredictRequest) -> PredictResponse:
         request_payload=payload.model_dump(),
         response_payload=response_payload,
         result_kind="one-predict",
+        endpoint="/predict",
+        record_count=1,
     )
     return PredictResponse(score=response_payload["score"], result_uri=result_uri)
 
@@ -183,10 +196,71 @@ def _run_batch_prediction(
         request_payload=payload.model_dump(),
         response_payload=response_payload,
         result_kind=result_kind,
+        endpoint="/predict/upload" if result_kind == "uploads" else "/predict/batch",
+        record_count=len(payload.clients),
     )
     return BatchPredictResponse(
         predictions=predictions,
         dataset_uri=dataset_uri,
+        result_uri=result_uri,
+    )
+
+
+@app.post("/segment", response_model=SegmentResponse)
+def segment(payload: SegmentRequest) -> SegmentResponse:
+    use_case = getattr(app.state, "predict_use_case", None) or get_predict_use_case()
+    try:
+        result = use_case.execute_segment(
+            user_id=payload.user_id,
+            token=payload.session_token,
+            users=[
+                {"user_id": user.user_id, "features": user.features}
+                for user in payload.users
+            ],
+            top_share=payload.top_share,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    segment_users = [
+        SegmentUserResponse(
+            user_id=user["user_id"],
+            probability_of_inactivity=user["probability_of_inactivity"],
+            rank=user["rank"],
+        )
+        for user in result["segment"]
+    ]
+    top_segment_users = [
+        SegmentUserResponse(
+            user_id=user["user_id"],
+            probability_of_inactivity=user["probability_of_inactivity"],
+            rank=user["rank"],
+        )
+        for user in result["top_segment"]
+    ]
+    response_payload = {
+        "top_share": result["top_share"],
+        "total_users": result["total_users"],
+        "segment": [user.model_dump() for user in segment_users],
+        "top_segment_size": result["top_segment_size"],
+        "top_segment": [user.model_dump() for user in top_segment_users],
+    }
+    result_uri = _save_prediction_result(
+        user_id=payload.user_id,
+        request_payload=payload.model_dump(),
+        response_payload=response_payload,
+        result_kind="segments",
+        endpoint="/segment",
+        record_count=len(payload.users),
+    )
+    return SegmentResponse(
+        top_share=result["top_share"],
+        total_users=result["total_users"],
+        segment=segment_users,
+        top_segment_size=result["top_segment_size"],
+        top_segment=top_segment_users,
         result_uri=result_uri,
     )
 

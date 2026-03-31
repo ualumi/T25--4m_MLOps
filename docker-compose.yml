@@ -75,9 +75,13 @@ services:
       - --report-uri
       - ${REPORT_URI}
       - --feature-schema-uri
-      - ${FEATURE_SCHEMA_URI}
+      - ${FEATURE_SCHEMA_URI:-s3://ml-artifacts/models/feature_schema.json}
+      - --feature-stats-uri
+      - ${FEATURE_STATS_URI:-s3://ml-artifacts/models/feature_stats.json}
       - --model-info-uri
-      - ${MODEL_INFO_URI}
+      - ${MODEL_INFO_URI:-s3://ml-artifacts/models/model_info.json}
+      - --model-registry-uri
+      - ${MODEL_REGISTRY_URI:-s3://ml-artifacts/models/model_registry.json}
     environment:
       S3_ENDPOINT_URL: ${S3_ENDPOINT_URL}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}

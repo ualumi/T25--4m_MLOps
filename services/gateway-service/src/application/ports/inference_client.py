@@ -20,6 +20,26 @@ class BatchPredictionResult(TypedDict):
     predictions: list[BatchPredictionResultItem]
 
 
+class SegmentClientPayload(TypedDict):
+    user_id: str
+    features: list[float]
+
+
+class SegmentResultUser(TypedDict):
+    user_id: str
+    probability_of_inactivity: float
+    rank: int
+
+
+class SegmentResult(TypedDict):
+    top_share: float
+    total_users: int
+    segment: list[SegmentResultUser]
+    top_segment_size: int
+    top_segment: list[SegmentResultUser]
+    result_uri: str | None
+
+
 class InferenceClientPort(ABC):
     @abstractmethod
     def predict(self, features: list[float], api_key: str) -> dict[str, float]:
@@ -30,3 +50,12 @@ class InferenceClientPort(ABC):
         self, clients: list[BatchPredictionClientPayload], api_key: str
     ) -> BatchPredictionResult:
         """Отправляет батч данных в сервис инференса и возвращает результаты."""
+
+    @abstractmethod
+    def segment(
+        self,
+        users: list[SegmentClientPayload],
+        top_share: float,
+        api_key: str,
+    ) -> SegmentResult:
+        """Строит сегмент пользователей и возвращает ранжированный результат."""

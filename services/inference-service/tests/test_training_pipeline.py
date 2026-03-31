@@ -51,14 +51,22 @@ class FakeArtifactStore:
         self.objects[uri] = json.dumps(payload, indent=2).encode("utf-8")
 
 
+def _artifact_uris() -> dict[str, str]:
+    return {
+        "production_model_uri": "s3://ml-artifacts/models/lgb_model.joblib",
+        "baseline_model_uri": "s3://ml-artifacts/models/baseline_logreg.joblib",
+        "report_uri": "s3://ml-artifacts/reports/training_metrics.json",
+        "feature_schema_uri": "s3://ml-artifacts/models/feature_schema.json",
+        "feature_stats_uri": "s3://ml-artifacts/models/feature_stats.json",
+        "model_info_uri": "s3://ml-artifacts/models/model_info.json",
+        "model_registry_uri": "s3://ml-artifacts/models/model_registry.json",
+    }
+
+
 def test_train_main_creates_models_and_report(tmp_path, monkeypatch, capsys) -> None:
     train_csv = tmp_path / "train.csv"
     test_csv = tmp_path / "test.csv"
-    production_model_uri = "s3://ml-artifacts/models/lgb_model.joblib"
-    baseline_model_uri = "s3://ml-artifacts/models/baseline_logreg.joblib"
-    report_uri = "s3://ml-artifacts/reports/training_metrics.json"
-    feature_schema_uri = "s3://ml-artifacts/models/feature_schema.json"
-    model_info_uri = "s3://ml-artifacts/models/model_info.json"
+    artifact_uris = _artifact_uris()
     artifact_store = FakeArtifactStore()
 
     _write_dataset(train_csv, _sample_train_rows())
@@ -74,15 +82,19 @@ def test_train_main_creates_models_and_report(tmp_path, monkeypatch, capsys) -> 
             "--test-path",
             str(test_csv),
             "--production-model-uri",
-            production_model_uri,
+            artifact_uris["production_model_uri"],
             "--baseline-model-uri",
-            baseline_model_uri,
+            artifact_uris["baseline_model_uri"],
             "--report-uri",
-            report_uri,
+            artifact_uris["report_uri"],
             "--feature-schema-uri",
-            feature_schema_uri,
+            artifact_uris["feature_schema_uri"],
+            "--feature-stats-uri",
+            artifact_uris["feature_stats_uri"],
             "--model-info-uri",
-            model_info_uri,
+            artifact_uris["model_info_uri"],
+            "--model-registry-uri",
+            artifact_uris["model_registry_uri"],
             "--top-share",
             "0.5",
         ],
@@ -90,27 +102,53 @@ def test_train_main_creates_models_and_report(tmp_path, monkeypatch, capsys) -> 
 
     train.main()
 
-    assert production_model_uri in artifact_store.objects
-    assert baseline_model_uri in artifact_store.objects
-    assert report_uri in artifact_store.objects
-    assert feature_schema_uri in artifact_store.objects
-    assert model_info_uri in artifact_store.objects
+    for uri in artifact_uris.values():
+        assert uri in artifact_store.objects
 
-    report = json.loads(artifact_store.objects[report_uri].decode("utf-8"))
+    report = json.loads(
+        artifact_store.objects[artifact_uris["report_uri"]].decode("utf-8")
+    )
     assert "baseline_logreg" in report
     assert "mvp_lightgbm" in report
     assert "roc_auc" in report["baseline_logreg"]
 
     feature_schema = json.loads(
-        artifact_store.objects[feature_schema_uri].decode("utf-8")
+        artifact_store.objects[artifact_uris["feature_schema_uri"]].decode("utf-8")
     )
     assert feature_schema["feature_count"] == 2
     assert feature_schema["features"][0]["name"] == "feature_a"
 
-    model_info = json.loads(artifact_store.objects[model_info_uri].decode("utf-8"))
-    assert model_info["production_model"]["uri"] == production_model_uri
-    assert model_info["feature_schema_uri"] == feature_schema_uri
+    feature_stats = json.loads(
+        artifact_store.objects[artifact_uris["feature_stats_uri"]].decode("utf-8")
+    )
+    assert feature_stats["feature_count"] == 2
+    assert feature_stats["features"][0]["name"] == "feature_a"
+    assert feature_stats["features"][0]["mean"] is not None
+
+    model_info = json.loads(
+        artifact_store.objects[artifact_uris["model_info_uri"]].decode("utf-8")
+    )
+    assert (
+        model_info["production_model"]["uri"] == artifact_uris["production_model_uri"]
+    )
+    assert model_info["feature_schema_uri"] == artifact_uris["feature_schema_uri"]
+    assert model_info["feature_stats_uri"] == artifact_uris["feature_stats_uri"]
+    assert model_info["model_registry_uri"] == artifact_uris["model_registry_uri"]
     assert model_info["top_share"] == 0.5
+    assert model_info["version"]
+
+    model_registry = json.loads(
+        artifact_store.objects[artifact_uris["model_registry_uri"]].decode("utf-8")
+    )
+    assert model_registry["current_version"]
+    assert (
+        model_registry["models"][0]["artifacts"]["model_registry_uri"]
+        == artifact_uris["model_registry_uri"]
+    )
+    assert (
+        model_registry["models"][0]["artifacts"]["feature_stats_uri"]
+        == artifact_uris["feature_stats_uri"]
+    )
 
     stdout = capsys.readouterr().out
     assert "baseline_logreg" in stdout

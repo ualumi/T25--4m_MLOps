@@ -23,6 +23,33 @@ class StubPredict:
             ]
         }
 
+    def execute_segment(self, user_id, token, users, top_share):
+        return {
+            "top_share": top_share,
+            "total_users": len(users),
+            "segment": [
+                {
+                    "user_id": "c-2",
+                    "probability_of_inactivity": 0.91,
+                    "rank": 1,
+                },
+                {
+                    "user_id": "c-1",
+                    "probability_of_inactivity": 0.45,
+                    "rank": 2,
+                },
+            ],
+            "top_segment_size": 1,
+            "top_segment": [
+                {
+                    "user_id": "c-2",
+                    "probability_of_inactivity": 0.91,
+                    "rank": 1,
+                }
+            ],
+            "result_uri": "s3://ml-artifacts/segments/result.json",
+        }
+
 
 class StubDatasetStore:
     def __init__(self) -> None:
@@ -82,6 +109,10 @@ def test_connect_and_predict() -> None:
         == "s3://ml-artifacts/prediction-results/u-1/one-predict/prediction-result.json"
     )
     assert app.state.prediction_result_store.saved[0]["subfolder"] == "one-predict"
+    metadata = app.state.prediction_result_store.saved[0]["payload"]["metadata"]
+    assert metadata["endpoint"] == "/predict"
+    assert metadata["record_count"] == 1
+    assert metadata["created_at"]
 
     del app.state.connect_use_case
     del app.state.predict_use_case
@@ -115,6 +146,9 @@ def test_predict_batch() -> None:
         == "s3://ml-artifacts/prediction-results/u-1/batch/prediction-result.json"
     )
     assert app.state.prediction_result_store.saved[0]["subfolder"] == "batch"
+    metadata = app.state.prediction_result_store.saved[0]["payload"]["metadata"]
+    assert metadata["endpoint"] == "/predict/batch"
+    assert metadata["record_count"] == 2
 
     del app.state.predict_use_case
     del app.state.prediction_result_store
@@ -180,6 +214,9 @@ def test_predict_upload_json() -> None:
     assert app.state.dataset_store.saved[0]["filename"] == "clients.json"
     assert app.state.dataset_store.saved[0]["subfolder"] == "uploads"
     assert app.state.prediction_result_store.saved[0]["subfolder"] == "uploads"
+    metadata = app.state.prediction_result_store.saved[0]["payload"]["metadata"]
+    assert metadata["endpoint"] == "/predict/upload"
+    assert metadata["record_count"] == 2
 
     del app.state.predict_use_case
     del app.state.dataset_store
@@ -222,6 +259,9 @@ def test_predict_upload_csv() -> None:
     )
     assert app.state.dataset_store.saved[0]["content_type"] == "text/csv"
     assert app.state.prediction_result_store.saved[0]["subfolder"] == "uploads"
+    metadata = app.state.prediction_result_store.saved[0]["payload"]["metadata"]
+    assert metadata["endpoint"] == "/predict/upload"
+    assert metadata["record_count"] == 2
 
     del app.state.predict_use_case
     del app.state.dataset_store
@@ -241,3 +281,39 @@ def test_predict_upload_rejects_unsupported_file_type() -> None:
     assert response.status_code == 400
 
     del app.state.predict_use_case
+
+
+def test_segment() -> None:
+    app.state.predict_use_case = StubPredict()
+    app.state.prediction_result_store = StubPredictionResultStore()
+    client = TestClient(app)
+
+    response = client.post(
+        "/segment",
+        json={
+            "user_id": "u-1",
+            "session_token": "token-123",
+            "users": [
+                {"user_id": "c-1", "features": VALID_FEATURES},
+                {"user_id": "c-2", "features": VALID_FEATURES},
+            ],
+            "top_share": 0.5,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["top_share"] == 0.5
+    assert body["top_segment_size"] == 1
+    assert body["segment"][0]["user_id"] == "c-2"
+    assert (
+        body["result_uri"]
+        == "s3://ml-artifacts/prediction-results/u-1/segments/prediction-result.json"
+    )
+    assert app.state.prediction_result_store.saved[0]["subfolder"] == "segments"
+    metadata = app.state.prediction_result_store.saved[0]["payload"]["metadata"]
+    assert metadata["endpoint"] == "/segment"
+    assert metadata["record_count"] == 2
+
+    del app.state.predict_use_case
+    del app.state.prediction_result_store

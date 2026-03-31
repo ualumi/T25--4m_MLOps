@@ -8,6 +8,8 @@ from src.application.ports.inference_client import (
     BatchPredictionClientPayload,
     BatchPredictionResult,
     InferenceClientPort,
+    SegmentClientPayload,
+    SegmentResult,
 )
 
 
@@ -32,6 +34,21 @@ class InferenceHttpClient(InferenceClientPort):
         response = httpx.post(
             f"{self._base_url}/predict/batch",
             json={"clients": clients},
+            headers={"x-api-key": api_key},
+            timeout=self._timeout,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def segment(
+        self,
+        users: list[SegmentClientPayload],
+        top_share: float,
+        api_key: str,
+    ) -> SegmentResult:
+        response = httpx.post(
+            f"{self._base_url}/segment",
+            json={"users": users, "top_share": top_share},
             headers={"x-api-key": api_key},
             timeout=self._timeout,
         )

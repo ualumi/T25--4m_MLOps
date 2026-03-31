@@ -14,6 +14,29 @@ class StubInference:
             ]
         }
 
+    def segment(self, users, top_share, api_key):
+        return {
+            "top_share": top_share,
+            "total_users": len(users),
+            "segment": [
+                {
+                    "user_id": user["user_id"],
+                    "probability_of_inactivity": 0.35,
+                    "rank": index + 1,
+                }
+                for index, user in enumerate(users)
+            ],
+            "top_segment_size": 1,
+            "top_segment": [
+                {
+                    "user_id": users[0]["user_id"],
+                    "probability_of_inactivity": 0.35,
+                    "rank": 1,
+                }
+            ],
+            "result_uri": "s3://ml-artifacts/segments/result.json",
+        }
+
 
 def test_connect_user_use_case() -> None:
     store = InMemorySessionStore()
@@ -55,3 +78,21 @@ def test_request_prediction_use_case_batch() -> None:
     )
     assert len(response["predictions"]) == 2
     assert response["predictions"][0]["client_id"] == "c-1"
+
+
+def test_request_prediction_use_case_segment() -> None:
+    store = InMemorySessionStore()
+    session = store.create("u-1")
+    use_case = RequestPredictionUseCase(store, StubInference(), "k")
+    response = use_case.execute_segment(
+        "u-1",
+        session.token,
+        [
+            {"user_id": "c-1", "features": [0.1, 0.2]},
+            {"user_id": "c-2", "features": [0.3, 0.4]},
+        ],
+        top_share=0.5,
+    )
+    assert response["total_users"] == 2
+    assert response["top_segment_size"] == 1
+    assert response["segment"][0]["user_id"] == "c-1"
