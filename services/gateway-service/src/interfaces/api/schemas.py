@@ -22,6 +22,7 @@ class PredictRequest(BaseModel):
 
 class PredictResponse(BaseModel):
     score: float
+    result_uri: str | None = None
 
 
 class BatchPredictClient(BaseModel):
@@ -43,3 +44,4 @@ class BatchPredictItemResponse(BaseModel):
 class BatchPredictResponse(BaseModel):
     predictions: list[BatchPredictItemResponse]
     dataset_uri: str | None = None
+    result_uri: str | None = None

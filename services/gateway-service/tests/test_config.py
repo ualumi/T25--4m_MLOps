@@ -11,6 +11,8 @@ def test_gateway_config_from_env(monkeypatch) -> None:
     monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
     monkeypatch.setenv("DATASET_UPLOADS_BUCKET", "user-datasets")
     monkeypatch.setenv("DATASET_UPLOADS_PREFIX", "incoming")
+    monkeypatch.setenv("PREDICTION_RESULTS_BUCKET", "prediction-results")
+    monkeypatch.setenv("PREDICTION_RESULTS_PREFIX", "responses")
     monkeypatch.setenv(
         "GATEWAY_DATABASE_URL",
         "postgresql://user:pass@localhost:5432/test_db",
@@ -28,3 +30,5 @@ def test_gateway_config_from_env(monkeypatch) -> None:
     assert config.s3_region == "us-east-1"
     assert config.dataset_upload_bucket == "user-datasets"
     assert config.dataset_upload_prefix == "incoming"
+    assert config.prediction_results_bucket == "prediction-results"
+    assert config.prediction_results_prefix == "responses"

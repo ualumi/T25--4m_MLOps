@@ -39,6 +39,8 @@ class GatewayConfig:
     s3_region: str
     dataset_upload_bucket: str
     dataset_upload_prefix: str
+    prediction_results_bucket: str
+    prediction_results_prefix: str
 
 
 @dataclass(frozen=True)
@@ -50,6 +52,8 @@ class InferenceConfig:
     s3_access_key_id: str | None
     s3_secret_access_key: str | None
     s3_region: str
+    segment_results_bucket: str
+    segment_results_prefix: str
 
 
 def get_gateway_config() -> GatewayConfig:
@@ -70,6 +74,12 @@ def get_gateway_config() -> GatewayConfig:
         s3_region=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
         dataset_upload_bucket=os.getenv("DATASET_UPLOADS_BUCKET", "ml-artifacts"),
         dataset_upload_prefix=os.getenv("DATASET_UPLOADS_PREFIX", "uploads"),
+        prediction_results_bucket=os.getenv(
+            "PREDICTION_RESULTS_BUCKET", "ml-artifacts"
+        ),
+        prediction_results_prefix=os.getenv(
+            "PREDICTION_RESULTS_PREFIX", "prediction-results"
+        ),
     )
 
 
@@ -82,4 +92,6 @@ def get_inference_config() -> InferenceConfig:
         s3_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
         s3_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
         s3_region=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
+        segment_results_bucket=os.getenv("SEGMENT_RESULTS_BUCKET", "ml-artifacts"),
+        segment_results_prefix=os.getenv("SEGMENT_RESULTS_PREFIX", "segments"),
     )

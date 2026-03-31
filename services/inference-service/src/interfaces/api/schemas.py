@@ -53,3 +53,4 @@ class SegmentResponse(BaseModel):
     segment: list[SegmentUserResponse]
     top_segment_size: int
     top_segment: list[SegmentUserResponse]
+    result_uri: str | None = None

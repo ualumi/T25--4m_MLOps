@@ -28,21 +28,39 @@ class StubDatasetStore:
     def __init__(self) -> None:
         self.saved: list[dict[str, str | bytes]] = []
 
-    def save_dataset(self, user_id, filename, data, content_type):
+    def save_dataset(self, user_id, filename, data, content_type, subfolder=None):
         self.saved.append(
             {
                 "user_id": user_id,
                 "filename": filename,
                 "data": data,
                 "content_type": content_type,
+                "subfolder": subfolder,
             }
         )
-        return f"s3://ml-artifacts/uploads/{user_id}/{filename}"
+        return f"s3://ml-artifacts/prediction-results/{user_id}/{subfolder}/{filename}"
+
+
+class StubPredictionResultStore:
+    def __init__(self) -> None:
+        self.saved: list[dict[str, object]] = []
+
+    def save_json_artifact(self, user_id, name, payload, subfolder=None):
+        self.saved.append(
+            {
+                "user_id": user_id,
+                "name": name,
+                "payload": payload,
+                "subfolder": subfolder,
+            }
+        )
+        return f"s3://ml-artifacts/prediction-results/{user_id}/{subfolder}/{name}"
 
 
 def test_connect_and_predict() -> None:
     app.state.connect_use_case = StubConnect()
     app.state.predict_use_case = StubPredict()
+    app.state.prediction_result_store = StubPredictionResultStore()
     client = TestClient(app)
 
     connect_response = client.post("/connect", json={"user_id": "u-1"})
@@ -59,13 +77,20 @@ def test_connect_and_predict() -> None:
     )
     assert predict_response.status_code == 200
     assert predict_response.json()["score"] == 0.61
+    assert (
+        predict_response.json()["result_uri"]
+        == "s3://ml-artifacts/prediction-results/u-1/one-predict/prediction-result.json"
+    )
+    assert app.state.prediction_result_store.saved[0]["subfolder"] == "one-predict"
 
     del app.state.connect_use_case
     del app.state.predict_use_case
+    del app.state.prediction_result_store
 
 
 def test_predict_batch() -> None:
     app.state.predict_use_case = StubPredict()
+    app.state.prediction_result_store = StubPredictionResultStore()
     client = TestClient(app)
 
     response = client.post(
@@ -85,8 +110,14 @@ def test_predict_batch() -> None:
     assert len(body["predictions"]) == 2
     assert body["predictions"][0]["client_id"] == "c-1"
     assert body["predictions"][0]["score"] == 0.61
+    assert (
+        body["result_uri"]
+        == "s3://ml-artifacts/prediction-results/u-1/batch/prediction-result.json"
+    )
+    assert app.state.prediction_result_store.saved[0]["subfolder"] == "batch"
 
     del app.state.predict_use_case
+    del app.state.prediction_result_store
 
 
 def test_predict_batch_rejects_invalid_feature_count() -> None:
@@ -112,6 +143,7 @@ def test_predict_batch_rejects_invalid_feature_count() -> None:
 def test_predict_upload_json() -> None:
     app.state.predict_use_case = StubPredict()
     app.state.dataset_store = StubDatasetStore()
+    app.state.prediction_result_store = StubPredictionResultStore()
     client = TestClient(app)
 
     response = client.post(
@@ -137,16 +169,27 @@ def test_predict_upload_json() -> None:
     body = response.json()
     assert len(body["predictions"]) == 2
     assert body["predictions"][0]["client_id"] == "c-1"
-    assert body["dataset_uri"] == "s3://ml-artifacts/uploads/u-1/clients.json"
+    assert (
+        body["dataset_uri"]
+        == "s3://ml-artifacts/prediction-results/u-1/uploads/clients.json"
+    )
+    assert (
+        body["result_uri"]
+        == "s3://ml-artifacts/prediction-results/u-1/uploads/prediction-result.json"
+    )
     assert app.state.dataset_store.saved[0]["filename"] == "clients.json"
+    assert app.state.dataset_store.saved[0]["subfolder"] == "uploads"
+    assert app.state.prediction_result_store.saved[0]["subfolder"] == "uploads"
 
     del app.state.predict_use_case
     del app.state.dataset_store
+    del app.state.prediction_result_store
 
 
 def test_predict_upload_csv() -> None:
     app.state.predict_use_case = StubPredict()
     app.state.dataset_store = StubDatasetStore()
+    app.state.prediction_result_store = StubPredictionResultStore()
     client = TestClient(app)
     header = ["client_id", *[f"feature_{index}" for index in range(1, 29)]]
     row_one = ["c-1", *["0.1"] * 28]
@@ -169,11 +212,20 @@ def test_predict_upload_csv() -> None:
     body = response.json()
     assert len(body["predictions"]) == 2
     assert body["predictions"][1]["client_id"] == "c-2"
-    assert body["dataset_uri"] == "s3://ml-artifacts/uploads/u-1/clients.csv"
+    assert (
+        body["dataset_uri"]
+        == "s3://ml-artifacts/prediction-results/u-1/uploads/clients.csv"
+    )
+    assert (
+        body["result_uri"]
+        == "s3://ml-artifacts/prediction-results/u-1/uploads/prediction-result.json"
+    )
     assert app.state.dataset_store.saved[0]["content_type"] == "text/csv"
+    assert app.state.prediction_result_store.saved[0]["subfolder"] == "uploads"
 
     del app.state.predict_use_case
     del app.state.dataset_store
+    del app.state.prediction_result_store
 
 
 def test_predict_upload_rejects_unsupported_file_type() -> None:

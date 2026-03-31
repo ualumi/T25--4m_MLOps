@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import sys
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
 
@@ -67,6 +69,38 @@ def build_segment_use_case() -> BuildTargetSegmentUseCase:
     return BuildTargetSegmentUseCase(scorer=scorer)
 
 
+def _build_segment_result_uri() -> str:
+    config = get_inference_config()
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    key = "/".join(
+        part
+        for part in (
+            config.segment_results_prefix.strip("/"),
+            f"{timestamp}-{uuid4().hex}-segment-result.json",
+        )
+        if part
+    )
+    return f"s3://{config.segment_results_bucket}/{key}"
+
+
+def _save_segment_result(
+    request_payload: dict[str, object],
+    response_payload: dict[str, object],
+) -> str:
+    artifact_store = (
+        getattr(app.state, "artifact_store", None) or build_artifact_store()
+    )
+    result_uri = _build_segment_result_uri()
+    artifact_store.save_json(
+        result_uri,
+        {
+            "request": request_payload,
+            "response": response_payload,
+        },
+    )
+    return result_uri
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -123,24 +157,38 @@ def build_segment(payload: SegmentRequest) -> SegmentResponse:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    segment_users = [
+        SegmentUserResponse(
+            user_id=user.user_id,
+            probability_of_inactivity=user.probability_of_inactivity,
+            rank=user.rank,
+        )
+        for user in result.segment
+    ]
+    top_segment_users = [
+        SegmentUserResponse(
+            user_id=user.user_id,
+            probability_of_inactivity=user.probability_of_inactivity,
+            rank=user.rank,
+        )
+        for user in result.top_segment
+    ]
+    response_payload = {
+        "top_share": result.top_share,
+        "total_users": result.total_users,
+        "segment": [user.model_dump() for user in segment_users],
+        "top_segment_size": len(result.top_segment),
+        "top_segment": [user.model_dump() for user in top_segment_users],
+    }
+    result_uri = _save_segment_result(
+        request_payload=payload.model_dump(),
+        response_payload=response_payload,
+    )
     return SegmentResponse(
         top_share=result.top_share,
         total_users=result.total_users,
-        segment=[
-            SegmentUserResponse(
-                user_id=user.user_id,
-                probability_of_inactivity=user.probability_of_inactivity,
-                rank=user.rank,
-            )
-            for user in result.segment
-        ],
+        segment=segment_users,
         top_segment_size=len(result.top_segment),
-        top_segment=[
-            SegmentUserResponse(
-                user_id=user.user_id,
-                probability_of_inactivity=user.probability_of_inactivity,
-                rank=user.rank,
-            )
-            for user in result.top_segment
-        ],
+        top_segment=top_segment_users,
+        result_uri=result_uri,
     )

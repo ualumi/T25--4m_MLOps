@@ -57,6 +57,8 @@ def test_train_main_creates_models_and_report(tmp_path, monkeypatch, capsys) -> 
     production_model_uri = "s3://ml-artifacts/models/lgb_model.joblib"
     baseline_model_uri = "s3://ml-artifacts/models/baseline_logreg.joblib"
     report_uri = "s3://ml-artifacts/reports/training_metrics.json"
+    feature_schema_uri = "s3://ml-artifacts/models/feature_schema.json"
+    model_info_uri = "s3://ml-artifacts/models/model_info.json"
     artifact_store = FakeArtifactStore()
 
     _write_dataset(train_csv, _sample_train_rows())
@@ -77,6 +79,10 @@ def test_train_main_creates_models_and_report(tmp_path, monkeypatch, capsys) -> 
             baseline_model_uri,
             "--report-uri",
             report_uri,
+            "--feature-schema-uri",
+            feature_schema_uri,
+            "--model-info-uri",
+            model_info_uri,
             "--top-share",
             "0.5",
         ],
@@ -87,11 +93,24 @@ def test_train_main_creates_models_and_report(tmp_path, monkeypatch, capsys) -> 
     assert production_model_uri in artifact_store.objects
     assert baseline_model_uri in artifact_store.objects
     assert report_uri in artifact_store.objects
+    assert feature_schema_uri in artifact_store.objects
+    assert model_info_uri in artifact_store.objects
 
     report = json.loads(artifact_store.objects[report_uri].decode("utf-8"))
     assert "baseline_logreg" in report
     assert "mvp_lightgbm" in report
     assert "roc_auc" in report["baseline_logreg"]
+
+    feature_schema = json.loads(
+        artifact_store.objects[feature_schema_uri].decode("utf-8")
+    )
+    assert feature_schema["feature_count"] == 2
+    assert feature_schema["features"][0]["name"] == "feature_a"
+
+    model_info = json.loads(artifact_store.objects[model_info_uri].decode("utf-8"))
+    assert model_info["production_model"]["uri"] == production_model_uri
+    assert model_info["feature_schema_uri"] == feature_schema_uri
+    assert model_info["top_share"] == 0.5
 
     stdout = capsys.readouterr().out
     assert "baseline_logreg" in stdout

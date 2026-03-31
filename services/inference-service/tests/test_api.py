@@ -60,6 +60,14 @@ class StubSegmentUseCase:
         )()
 
 
+class StubArtifactStore:
+    def __init__(self) -> None:
+        self.saved: list[dict[str, object]] = []
+
+    def save_json(self, uri, payload):
+        self.saved.append({"uri": uri, "payload": payload})
+
+
 def test_health() -> None:
     client = TestClient(app)
     response = client.get("/health")
@@ -119,6 +127,7 @@ def test_predict_batch_endpoint_rejects_invalid_feature_count() -> None:
 
 def test_segment_endpoint() -> None:
     app.state.segment_use_case = StubSegmentUseCase()
+    app.state.artifact_store = StubArtifactStore()
     client = TestClient(app)
 
     response = client.post(
@@ -141,4 +150,7 @@ def test_segment_endpoint() -> None:
     assert body["segment"][0]["user_id"] == "u-2"
     assert body["segment"][0]["rank"] == 1
     assert body["top_segment"][0]["user_id"] == "u-2"
+    assert body["result_uri"].startswith("s3://")
+    assert len(app.state.artifact_store.saved) == 1
     del app.state.segment_use_case
+    del app.state.artifact_store

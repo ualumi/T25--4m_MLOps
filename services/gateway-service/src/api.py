@@ -69,12 +69,45 @@ def get_predict_use_case() -> RequestPredictionUseCase:
 def get_dataset_store() -> S3DatasetStore:
     config = get_gateway_config()
     return S3DatasetStore(
-        bucket=config.dataset_upload_bucket,
-        prefix=config.dataset_upload_prefix,
+        bucket=config.prediction_results_bucket,
+        prefix=config.prediction_results_prefix,
         endpoint_url=config.s3_endpoint_url,
         access_key_id=config.s3_access_key_id,
         secret_access_key=config.s3_secret_access_key,
         region=config.s3_region,
+    )
+
+
+@lru_cache(maxsize=1)
+def get_prediction_result_store() -> S3DatasetStore:
+    config = get_gateway_config()
+    return S3DatasetStore(
+        bucket=config.prediction_results_bucket,
+        prefix=config.prediction_results_prefix,
+        endpoint_url=config.s3_endpoint_url,
+        access_key_id=config.s3_access_key_id,
+        secret_access_key=config.s3_secret_access_key,
+        region=config.s3_region,
+    )
+
+
+def _save_prediction_result(
+    user_id: str,
+    request_payload: dict[str, object],
+    response_payload: dict[str, object],
+    result_kind: str,
+) -> str:
+    result_store = getattr(app.state, "prediction_result_store", None) or (
+        get_prediction_result_store()
+    )
+    return result_store.save_json_artifact(
+        user_id=user_id,
+        name="prediction-result.json",
+        payload={
+            "request": request_payload,
+            "response": response_payload,
+        },
+        subfolder=result_kind,
     )
 
 
@@ -104,11 +137,20 @@ def predict(payload: PredictRequest) -> PredictResponse:
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    return PredictResponse(score=float(result["score"]))
+    response_payload = {"score": float(result["score"])}
+    result_uri = _save_prediction_result(
+        user_id=payload.user_id,
+        request_payload=payload.model_dump(),
+        response_payload=response_payload,
+        result_kind="one-predict",
+    )
+    return PredictResponse(score=response_payload["score"], result_uri=result_uri)
 
 
 def _run_batch_prediction(
-    payload: BatchPredictRequest, dataset_uri: str | None = None
+    payload: BatchPredictRequest,
+    dataset_uri: str | None = None,
+    result_kind: str = "batch",
 ) -> BatchPredictResponse:
     use_case = getattr(app.state, "predict_use_case", None) or get_predict_use_case()
     try:
@@ -125,15 +167,27 @@ def _run_batch_prediction(
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+    predictions = [
+        BatchPredictItemResponse(
+            client_id=item["client_id"],
+            score=item["score"],
+        )
+        for item in result["predictions"]
+    ]
+    response_payload = {
+        "predictions": [prediction.model_dump() for prediction in predictions],
+        "dataset_uri": dataset_uri,
+    }
+    result_uri = _save_prediction_result(
+        user_id=payload.user_id,
+        request_payload=payload.model_dump(),
+        response_payload=response_payload,
+        result_kind=result_kind,
+    )
     return BatchPredictResponse(
-        predictions=[
-            BatchPredictItemResponse(
-                client_id=item["client_id"],
-                score=item["score"],
-            )
-            for item in result["predictions"]
-        ],
+        predictions=predictions,
         dataset_uri=dataset_uri,
+        result_uri=result_uri,
     )
 
 
@@ -221,7 +275,7 @@ def _build_batch_request_from_upload(
 
 @app.post("/predict/batch", response_model=BatchPredictResponse)
 def predict_batch(payload: BatchPredictRequest) -> BatchPredictResponse:
-    return _run_batch_prediction(payload)
+    return _run_batch_prediction(payload, result_kind="batch")
 
 
 @app.post("/predict/upload", response_model=BatchPredictResponse)
@@ -244,5 +298,10 @@ async def predict_upload(
         filename=filename,
         data=raw_content,
         content_type=file.content_type or "application/octet-stream",
+        subfolder="uploads",
     )
-    return _run_batch_prediction(payload, dataset_uri=dataset_uri)
+    return _run_batch_prediction(
+        payload,
+        dataset_uri=dataset_uri,
+        result_kind="uploads",
+    )

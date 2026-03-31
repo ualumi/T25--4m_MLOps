@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +15,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from src.infrastructure.storage.s3_artifact_store import S3ArtifactStore
-from src.training.data import load_dataset, split_features_target
+from src.training.data import get_feature_columns, load_dataset, split_features_target
 from src.training.evaluate import evaluate_binary_classifier, score_classifier
 
 CURRENT_FILE = Path(__file__).resolve()
@@ -27,6 +28,8 @@ DEFAULT_TEST_PATH = REPO_ROOT / "data" / "test_data.csv"
 DEFAULT_PRODUCTION_MODEL_URI = "s3://ml-artifacts/models/lgb_model.joblib"
 DEFAULT_BASELINE_MODEL_URI = "s3://ml-artifacts/models/baseline_logreg.joblib"
 DEFAULT_REPORT_URI = "s3://ml-artifacts/reports/training_metrics.json"
+DEFAULT_FEATURE_SCHEMA_URI = "s3://ml-artifacts/models/feature_schema.json"
+DEFAULT_MODEL_INFO_URI = "s3://ml-artifacts/models/model_info.json"
 
 
 def build_baseline_model() -> Pipeline:
@@ -89,6 +92,54 @@ def build_artifact_store() -> S3ArtifactStore:
     )
 
 
+def build_feature_schema(dataset_path: str | Path) -> dict[str, Any]:
+    dataset = load_dataset(dataset_path)
+    feature_columns = get_feature_columns(dataset)
+    return {
+        "feature_count": len(feature_columns),
+        "id_column": "user_id",
+        "target_column": "churn",
+        "features": [
+            {
+                "name": column,
+                "dtype": str(dataset[column].dtype),
+            }
+            for column in feature_columns
+        ],
+    }
+
+
+def build_model_info(
+    production_model: Any,
+    baseline_model: Any,
+    metrics: dict[str, dict[str, float]],
+    train_path: str | Path,
+    test_path: str | Path,
+    top_share: float,
+    production_model_uri: str,
+    baseline_model_uri: str,
+    report_uri: str,
+    feature_schema_uri: str,
+) -> dict[str, Any]:
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "train_path": str(train_path),
+        "test_path": str(test_path),
+        "top_share": top_share,
+        "production_model": {
+            "type": type(production_model).__name__,
+            "uri": production_model_uri,
+        },
+        "baseline_model": {
+            "type": type(baseline_model).__name__,
+            "uri": baseline_model_uri,
+        },
+        "report_uri": report_uri,
+        "feature_schema_uri": feature_schema_uri,
+        "metrics_summary": metrics,
+    }
+
+
 def save_training_outputs(
     production_model: Any,
     baseline_model: Any,
@@ -96,11 +147,17 @@ def save_training_outputs(
     production_model_uri: str,
     baseline_model_uri: str,
     report_uri: str,
+    feature_schema: dict[str, Any],
+    feature_schema_uri: str,
+    model_info: dict[str, Any],
+    model_info_uri: str,
 ) -> None:
     artifact_store = build_artifact_store()
     artifact_store.save_joblib(production_model_uri, production_model)
     artifact_store.save_joblib(baseline_model_uri, baseline_model)
     artifact_store.save_json(report_uri, metrics)
+    artifact_store.save_json(feature_schema_uri, feature_schema)
+    artifact_store.save_json(model_info_uri, model_info)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -133,6 +190,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="S3 URI for the evaluation metrics JSON.",
     )
     parser.add_argument(
+        "--feature-schema-uri",
+        default=DEFAULT_FEATURE_SCHEMA_URI,
+        help="S3 URI for the feature schema JSON.",
+    )
+    parser.add_argument(
+        "--model-info-uri",
+        default=DEFAULT_MODEL_INFO_URI,
+        help="S3 URI for the model metadata JSON.",
+    )
+    parser.add_argument(
         "--top-share",
         type=float,
         default=0.2,
@@ -161,6 +228,19 @@ def main() -> None:
         "baseline_logreg": baseline_metrics,
         "mvp_lightgbm": mvp_metrics,
     }
+    feature_schema = build_feature_schema(args.train_path)
+    model_info = build_model_info(
+        production_model=mvp_model,
+        baseline_model=baseline_model,
+        metrics=metrics,
+        train_path=args.train_path,
+        test_path=args.test_path,
+        top_share=args.top_share,
+        production_model_uri=args.production_model_uri,
+        baseline_model_uri=args.baseline_model_uri,
+        report_uri=args.report_uri,
+        feature_schema_uri=args.feature_schema_uri,
+    )
     save_training_outputs(
         production_model=mvp_model,
         baseline_model=baseline_model,
@@ -168,6 +248,10 @@ def main() -> None:
         production_model_uri=args.production_model_uri,
         baseline_model_uri=args.baseline_model_uri,
         report_uri=args.report_uri,
+        feature_schema=feature_schema,
+        feature_schema_uri=args.feature_schema_uri,
+        model_info=model_info,
+        model_info_uri=args.model_info_uri,
     )
     print(json.dumps(metrics, indent=2))
 
