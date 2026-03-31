@@ -8,6 +8,12 @@ anyio==4.13.0
     # via
     #   httpx
     #   starlette
+boto3==1.42.78
+    # via -r services/gateway-service/requirements.in
+botocore==1.42.78
+    # via
+    #   boto3
+    #   s3transfer
 certifi==2026.2.25
     # via
     #   httpcore
@@ -30,6 +36,10 @@ idna==3.11
     # via
     #   anyio
     #   httpx
+jmespath==1.1.0
+    # via
+    #   boto3
+    #   botocore
 psycopg==3.3.3
     # via -r services/gateway-service/requirements.in
 psycopg-binary==3.3.3
@@ -42,6 +52,12 @@ pydantic==2.12.5
     #   fastapi
 pydantic-core==2.41.5
     # via pydantic
+python-dateutil==2.9.0.post0
+    # via botocore
+s3transfer==0.16.0
+    # via boto3
+six==1.17.0
+    # via python-dateutil
 starlette==1.0.0
     # via fastapi
 typing-extensions==4.15.0
@@ -57,6 +73,8 @@ typing-inspection==0.4.2
     # via
     #   fastapi
     #   pydantic
+urllib3==2.6.3
+    # via botocore
 tzdata==2025.3
     # via psycopg
 uvicorn==0.42.0

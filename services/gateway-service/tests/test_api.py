@@ -24,6 +24,22 @@ class StubPredict:
         }
 
 
+class StubDatasetStore:
+    def __init__(self) -> None:
+        self.saved: list[dict[str, str | bytes]] = []
+
+    def save_dataset(self, user_id, filename, data, content_type):
+        self.saved.append(
+            {
+                "user_id": user_id,
+                "filename": filename,
+                "data": data,
+                "content_type": content_type,
+            }
+        )
+        return f"s3://ml-artifacts/uploads/{user_id}/{filename}"
+
+
 def test_connect_and_predict() -> None:
     app.state.connect_use_case = StubConnect()
     app.state.predict_use_case = StubPredict()
@@ -95,6 +111,7 @@ def test_predict_batch_rejects_invalid_feature_count() -> None:
 
 def test_predict_upload_json() -> None:
     app.state.predict_use_case = StubPredict()
+    app.state.dataset_store = StubDatasetStore()
     client = TestClient(app)
 
     response = client.post(
@@ -120,12 +137,16 @@ def test_predict_upload_json() -> None:
     body = response.json()
     assert len(body["predictions"]) == 2
     assert body["predictions"][0]["client_id"] == "c-1"
+    assert body["dataset_uri"] == "s3://ml-artifacts/uploads/u-1/clients.json"
+    assert app.state.dataset_store.saved[0]["filename"] == "clients.json"
 
     del app.state.predict_use_case
+    del app.state.dataset_store
 
 
 def test_predict_upload_csv() -> None:
     app.state.predict_use_case = StubPredict()
+    app.state.dataset_store = StubDatasetStore()
     client = TestClient(app)
     header = ["client_id", *[f"feature_{index}" for index in range(1, 29)]]
     row_one = ["c-1", *["0.1"] * 28]
@@ -148,8 +169,11 @@ def test_predict_upload_csv() -> None:
     body = response.json()
     assert len(body["predictions"]) == 2
     assert body["predictions"][1]["client_id"] == "c-2"
+    assert body["dataset_uri"] == "s3://ml-artifacts/uploads/u-1/clients.csv"
+    assert app.state.dataset_store.saved[0]["content_type"] == "text/csv"
 
     del app.state.predict_use_case
+    del app.state.dataset_store
 
 
 def test_predict_upload_rejects_unsupported_file_type() -> None:

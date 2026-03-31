@@ -42,3 +42,4 @@ class BatchPredictItemResponse(BaseModel):
 
 class BatchPredictResponse(BaseModel):
     predictions: list[BatchPredictItemResponse]
+    dataset_uri: str | None = None

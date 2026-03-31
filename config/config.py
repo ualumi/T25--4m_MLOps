@@ -33,6 +33,12 @@ class GatewayConfig:
     inference_service_url: str
     service_api_key: str
     database_url: str
+    s3_endpoint_url: str | None
+    s3_access_key_id: str | None
+    s3_secret_access_key: str | None
+    s3_region: str
+    dataset_upload_bucket: str
+    dataset_upload_prefix: str
 
 
 @dataclass(frozen=True)
@@ -58,6 +64,12 @@ def get_gateway_config() -> GatewayConfig:
             "GATEWAY_DATABASE_URL",
             "postgresql://postgres:postgres@postgres:5432/gateway_db",
         ),
+        s3_endpoint_url=os.getenv("S3_ENDPOINT_URL"),
+        s3_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+        s3_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+        s3_region=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
+        dataset_upload_bucket=os.getenv("DATASET_UPLOADS_BUCKET", "ml-artifacts"),
+        dataset_upload_prefix=os.getenv("DATASET_UPLOADS_PREFIX", "uploads"),
     )
 
 

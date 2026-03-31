@@ -4,3 +4,4 @@ pydantic
 httpx
 psycopg[binary]
 python-multipart
+boto3

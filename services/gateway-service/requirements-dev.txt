@@ -10,6 +10,12 @@ anyio==4.13.0
     #   starlette
 astroid==4.0.4
     # via pylint
+boto3==1.42.78
+    # via -r services/gateway-service/requirements.in
+botocore==1.42.78
+    # via
+    #   boto3
+    #   s3transfer
 black==26.3.1
     # via -r services/gateway-service/requirements-dev.in
 certifi==2026.2.25
@@ -57,6 +63,10 @@ mccabe==0.7.0
     # via
     #   flake8
     #   pylint
+jmespath==1.1.0
+    # via
+    #   boto3
+    #   botocore
 mypy==1.19.1
     # via -r services/gateway-service/requirements-dev.in
 mypy-extensions==1.1.0
@@ -93,6 +103,8 @@ pydantic==2.12.5
     #   fastapi
 pydantic-core==2.41.5
     # via pydantic
+python-dateutil==2.9.0.post0
+    # via botocore
 pyflakes==3.4.0
     # via flake8
 pygments==2.20.0
@@ -107,6 +119,10 @@ pytest-cov==7.1.0
     # via -r services/gateway-service/requirements-dev.in
 pytokens==0.4.1
     # via black
+s3transfer==0.16.0
+    # via boto3
+six==1.17.0
+    # via python-dateutil
 starlette==1.0.0
     # via fastapi
 tomli==2.4.1
@@ -129,5 +145,7 @@ typing-inspection==0.4.2
     #   pydantic
 tzdata==2025.3
     # via psycopg
+urllib3==2.6.3
+    # via botocore
 uvicorn==0.42.0
     # via -r services/gateway-service/requirements.in
