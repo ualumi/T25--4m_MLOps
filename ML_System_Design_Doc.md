@@ -343,7 +343,22 @@ J --> K["Анализ результатов <br/> ΔCR <br/> CPRU"]
 
 Для обеспечения отказоустойчивости и чистоты кода используется микросервисный подход на базе **Clean Architecture**.
 
-**Схема inference-контура (MVP):** `Data / Features` —> `Scoring Service` —> `Business Ranking` —> `Post-process / Filtering` —> `Target Segment (Top-20%)`
+**Схема inference-контура (MVP):** 
+`Data / Features` —> `Scoring Service` —> `Business Ranking` —> `Post-process / Filtering` —> `Target Segment (Top-20%)`
+
+```mermaid
+graph LR
+    A[(Data / Features)] --> B[Scoring Service]
+    B --> C[Business Ranking]
+    C --> D[Post-process / Filtering]
+    D --> E{Target Segment}
+    E --> F[Top-20% Output]
+
+    style A fill:#e1f5fe,stroke:#01579b
+    style B fill:#e8f5e9,stroke:#2e7d32
+    style C fill:#e8f5e9,stroke:#2e7d32
+    style D fill:#e8f5e9,stroke:#2e7d32
+    style F fill:#f3e5f5,stroke:#7b1fa2
 
 **Основные блоки и сервисы:**
 * **Data / Features (Витрина признаков):** Хранит предварительно агрегированные характеристики пользователей. Позволяет инференс-сервису не пересчитывать сырые логи транзакций при каждом запросе.
