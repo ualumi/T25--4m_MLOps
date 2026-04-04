@@ -30,7 +30,9 @@ class FakeS3Client:
         client = self
 
         class _Paginator:
-            def paginate(self, bucket_name: str, prefix: str):
+            def paginate(self, **kwargs):
+                bucket_name = kwargs["Bucket"]
+                prefix = kwargs["Prefix"]
                 contents = [
                     {"Key": key}
                     for stored_bucket, key in client.objects
@@ -40,11 +42,16 @@ class FakeS3Client:
 
         return _Paginator()
 
-    def copy(self, copy_source, bucket: str, key: str) -> None:
+    def copy(self, **kwargs) -> None:
+        copy_source = kwargs["CopySource"]
+        bucket = kwargs["Bucket"]
+        key = kwargs["Key"]
         source = (copy_source["Bucket"], copy_source["Key"])
         self.objects[(bucket, key)] = self.objects[source]
 
-    def delete_object(self, bucket: str, key: str) -> None:
+    def delete_object(self, **kwargs) -> None:
+        bucket = kwargs["Bucket"]
+        key = kwargs["Key"]
         self.objects.pop((bucket, key), None)
 
 
