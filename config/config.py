@@ -35,6 +35,7 @@ def _float_env(name: str, default: float) -> float:
 
 
 @dataclass(frozen=True)
+# pylint: disable=too-many-instance-attributes
 class GatewayConfig:
     host: str
     port: int

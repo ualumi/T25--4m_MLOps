@@ -30,22 +30,22 @@ class FakeS3Client:
         client = self
 
         class _Paginator:
-            def paginate(self, Bucket: str, Prefix: str):
+            def paginate(self, bucket_name: str, prefix: str):
                 contents = [
                     {"Key": key}
-                    for bucket, key in client.objects
-                    if bucket == Bucket and key.startswith(Prefix)
+                    for stored_bucket, key in client.objects
+                    if stored_bucket == bucket_name and key.startswith(prefix)
                 ]
                 return [{"Contents": contents}]
 
         return _Paginator()
 
-    def copy(self, CopySource, Bucket: str, Key: str) -> None:
-        source = (CopySource["Bucket"], CopySource["Key"])
-        self.objects[(Bucket, Key)] = self.objects[source]
+    def copy(self, copy_source, bucket: str, key: str) -> None:
+        source = (copy_source["Bucket"], copy_source["Key"])
+        self.objects[(bucket, key)] = self.objects[source]
 
-    def delete_object(self, Bucket: str, Key: str) -> None:
-        self.objects.pop((Bucket, Key), None)
+    def delete_object(self, bucket: str, key: str) -> None:
+        self.objects.pop((bucket, key), None)
 
 
 def test_parse_s3_uri() -> None:
@@ -71,7 +71,8 @@ def test_joblib_model_scorer_loads_model_from_s3() -> None:
 
 def test_s3_artifact_store_lists_uris() -> None:
     artifact_store = S3ArtifactStore()
-    artifact_store._client = FakeS3Client()
+    fake_client = FakeS3Client()
+    artifact_store._client = fake_client  # pylint: disable=protected-access
 
     uris = artifact_store.list_uris("ml-artifacts", "datasets")
 
@@ -83,7 +84,8 @@ def test_s3_artifact_store_lists_uris() -> None:
 
 def test_s3_artifact_store_moves_uri() -> None:
     artifact_store = S3ArtifactStore()
-    artifact_store._client = FakeS3Client()
+    fake_client = FakeS3Client()
+    artifact_store._client = fake_client  # pylint: disable=protected-access
     artifact_store.ensure_bucket = lambda bucket: None
 
     artifact_store.move_uri(
@@ -91,8 +93,8 @@ def test_s3_artifact_store_moves_uri() -> None:
         "s3://ml-artifacts/archive/a.csv",
     )
 
-    assert ("ml-artifacts", "datasets/a.csv") not in artifact_store._client.objects
-    assert artifact_store._client.objects[("ml-artifacts", "archive/a.csv")] == b"a"
+    assert ("ml-artifacts", "datasets/a.csv") not in fake_client.objects
+    assert fake_client.objects[("ml-artifacts", "archive/a.csv")] == b"a"
 
 
 def test_s3_artifact_store_load_json_requires_object(monkeypatch) -> None:

@@ -57,6 +57,7 @@ class TrainingArtifactUris:
 
 
 @dataclass(frozen=True)
+# pylint: disable=too-many-instance-attributes
 class TrainingRunContext:
     train_path: str | Path
     test_path: str | Path
@@ -263,6 +264,7 @@ def build_model_registry(
     )
 
 
+# pylint: disable=too-many-arguments
 def save_training_outputs(
     production_model: Any,
     baseline_model: Any,

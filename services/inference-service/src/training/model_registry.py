@@ -105,6 +105,7 @@ def load_model_registry(artifact_store: S3ArtifactStore, uri: str) -> dict[str, 
     return normalize_registry(payload)
 
 
+# pylint: disable=too-many-arguments
 def build_model_registry_entry(
     *,
     version: str,

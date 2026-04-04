@@ -54,6 +54,7 @@ def build_versioned_artifact_uris(
     }
 
 
+# pylint: disable=too-many-return-statements,too-many-branches
 def rewrite_legacy_s3_uri(uri: str) -> str:
     if not uri.startswith("s3://"):
         return uri
@@ -66,20 +67,33 @@ def rewrite_legacy_s3_uri(uri: str) -> str:
         return uri
 
     if parts[0] == "uploads":
-        return f"s3://{bucket}/{(PurePosixPath(DEFAULT_DATASET_UPLOAD_PREFIX) / PurePosixPath(*parts[1:])).as_posix()}"
+        destination = PurePosixPath(DEFAULT_DATASET_UPLOAD_PREFIX) / PurePosixPath(
+            *parts[1:]
+        )
+        return f"s3://{bucket}/{destination.as_posix()}"
 
     if parts[0] == "prediction-results":
-        return f"s3://{bucket}/{(PurePosixPath(DEFAULT_PREDICTION_RESULTS_PREFIX) / PurePosixPath(*parts[1:])).as_posix()}"
+        destination = PurePosixPath(DEFAULT_PREDICTION_RESULTS_PREFIX) / PurePosixPath(
+            *parts[1:]
+        )
+        return f"s3://{bucket}/{destination.as_posix()}"
 
     if parts[0] == "segments":
-        return f"s3://{bucket}/{(PurePosixPath(DEFAULT_SEGMENT_RESULTS_PREFIX) / PurePosixPath(*parts[1:])).as_posix()}"
+        destination = PurePosixPath(DEFAULT_SEGMENT_RESULTS_PREFIX) / PurePosixPath(
+            *parts[1:]
+        )
+        return f"s3://{bucket}/{destination.as_posix()}"
 
     if parts[0] == "retraining-uploads":
-        return f"s3://{bucket}/{(PurePosixPath(DEFAULT_RETRAIN_SOURCE_PREFIX) / PurePosixPath(*parts[1:])).as_posix()}"
+        destination = PurePosixPath(DEFAULT_RETRAIN_SOURCE_PREFIX) / PurePosixPath(
+            *parts[1:]
+        )
+        return f"s3://{bucket}/{destination.as_posix()}"
 
     if parts[:2] == ("datasets", "non-promoted"):
         suffix = PurePosixPath(*parts[2:]) if len(parts) > 2 else PurePosixPath()
-        return f"s3://{bucket}/{(PurePosixPath(DEFAULT_RETRAIN_NON_PROMOTED_PREFIX) / suffix).as_posix()}"
+        destination = PurePosixPath(DEFAULT_RETRAIN_NON_PROMOTED_PREFIX) / suffix
+        return f"s3://{bucket}/{destination.as_posix()}"
 
     if key == "reports/training_metrics.json":
         return DEFAULT_REPORT_URI.replace(DEFAULT_BUCKET, bucket, 1)
