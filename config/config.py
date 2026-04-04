@@ -88,7 +88,9 @@ def get_gateway_config() -> GatewayConfig:
         dataset_upload_prefix=os.getenv(
             "DATASET_UPLOADS_PREFIX", DEFAULT_DATASET_UPLOAD_PREFIX
         ),
-        retrain_source_bucket=os.getenv("RETRAIN_SOURCE_DATASETS_BUCKET", "ml-artifacts"),
+        retrain_source_bucket=os.getenv(
+            "RETRAIN_SOURCE_DATASETS_BUCKET", "ml-artifacts"
+        ),
         retrain_source_prefix=os.getenv(
             "RETRAIN_SOURCE_DATASETS_PREFIX", DEFAULT_RETRAIN_SOURCE_PREFIX
         ),

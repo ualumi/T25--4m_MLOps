@@ -16,9 +16,7 @@ DEFAULT_SEGMENT_RESULTS_PREFIX = "inference/segments"
 
 DEFAULT_MODEL_URI = f"s3://{DEFAULT_BUCKET}/models/production/model.joblib"
 DEFAULT_BASELINE_MODEL_URI = f"s3://{DEFAULT_BUCKET}/models/production/baseline.joblib"
-DEFAULT_REPORT_URI = (
-    f"s3://{DEFAULT_BUCKET}/models/production/training_metrics.json"
-)
+DEFAULT_REPORT_URI = f"s3://{DEFAULT_BUCKET}/models/production/training_metrics.json"
 DEFAULT_FEATURE_SCHEMA_URI = (
     f"s3://{DEFAULT_BUCKET}/models/production/feature_schema.json"
 )
@@ -119,7 +117,9 @@ def rewrite_legacy_s3_uri(uri: str) -> str:
         }
         mapped_name = filename_map.get(parts[2])
         if mapped_name is not None:
-            versioned_key = PurePosixPath("models") / "versions" / parts[1] / mapped_name
+            versioned_key = (
+                PurePosixPath("models") / "versions" / parts[1] / mapped_name
+            )
             return f"s3://{bucket}/{versioned_key.as_posix()}"
 
     return uri
