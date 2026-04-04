@@ -44,6 +44,15 @@ from src.interfaces.api.schemas import (  # noqa: E402
 app = FastAPI(title="Inference Service", version="1.0.0")
 
 
+def _clear_runtime_state() -> None:
+    build_use_case.cache_clear()
+    build_segment_use_case.cache_clear()
+    build_artifact_store.cache_clear()
+    for attribute in ("use_case", "segment_use_case", "artifact_store"):
+        if hasattr(app.state, attribute):
+            delattr(app.state, attribute)
+
+
 @lru_cache(maxsize=1)
 def build_artifact_store() -> S3ArtifactStore:
     config = get_inference_config()
@@ -110,6 +119,12 @@ def _save_segment_result(
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/internal/reload-model")
+def reload_model() -> dict[str, str]:
+    _clear_runtime_state()
+    return {"status": "reloaded"}
 
 
 @app.post("/predict", response_model=PredictResponse)

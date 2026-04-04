@@ -180,6 +180,7 @@ docker-compose.yml
 - `postgres` поднимается как хранилище пользовательских сессий;
 - `minio` поднимается как `S3`-совместимое хранилище артефактов модели;
 - `artifact-trainer` публикует модель и отчёты в `S3` перед запуском `inference-service`;
+- `airflow-webserver` и `airflow-scheduler` запускают регулярное переобучение модели по расписанию;
 - `gateway-service` поднимается как внешний REST-вход;
 - `inference-service` поднимается как внутренний ML-сервис;
 - модель подключается по `S3`-URI;
@@ -204,6 +205,7 @@ docker compose up --build
 - `inference-service` — внутренний API модели на порту `8001`
 - `postgres` — БД для хранения пользовательских сессий на порту `5432`
 - `minio` — `S3`-совместимое хранилище артефактов на портах `9000` и `9001`
+- `airflow-webserver` — UI оркестратора на порту `8080`
 
 Основные сценарии после деплоя:
 
@@ -212,6 +214,21 @@ docker compose up --build
 - через `inference-service` можно проверить техническое состояние сервиса по `health` endpoint.
 
 Таким образом деплой поднимает сразу полную рабочую схему проекта: входной сервис, ML-сервис, `PostgreSQL`, `S3`-совместимое хранилище артефактов и модель, подключённую к inference-слою.
+
+## Airflow DAG
+
+Для регулярного переобучения в проект добавлен `Airflow`-pipeline `churn_retraining_pipeline`.
+
+Он выполняет четыре шага:
+
+1. ждёт готовности `inference-service`;
+2. запускает `python -m src.training.train` на текущих датасетах;
+3. вызывает internal endpoint `/internal/reload-model`, чтобы сервис сбросил кэш модели;
+4. проверяет `/health` после обновления.
+
+По умолчанию DAG запускается по расписанию `0 2 * * *`, а изменить его можно через `AIRFLOW_RETRAIN_SCHEDULE` в `.env`.
+
+Airflow UI доступен по адресу `http://localhost:8080`, логин и пароль задаются переменными `AIRFLOW_ADMIN_USERNAME` и `AIRFLOW_ADMIN_PASSWORD`.
 
 ## Проверка качества кода
 

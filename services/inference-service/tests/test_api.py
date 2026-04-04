@@ -75,6 +75,21 @@ def test_health() -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_reload_model_endpoint_clears_runtime_state() -> None:
+    app.state.use_case = StubUseCase()
+    app.state.segment_use_case = StubSegmentUseCase()
+    app.state.artifact_store = StubArtifactStore()
+    client = TestClient(app)
+
+    response = client.post("/internal/reload-model")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "reloaded"}
+    assert not hasattr(app.state, "use_case")
+    assert not hasattr(app.state, "segment_use_case")
+    assert not hasattr(app.state, "artifact_store")
+
+
 def test_predict_endpoint() -> None:
     app.state.use_case = StubUseCase()
     client = TestClient(app)
