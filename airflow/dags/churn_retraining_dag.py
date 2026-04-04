@@ -22,7 +22,8 @@ python -m src.training.train \
   --feature-schema-uri "${FEATURE_SCHEMA_URI}" \
   --feature-stats-uri "${FEATURE_STATS_URI}" \
   --model-info-uri "${MODEL_INFO_URI}" \
-  --model-registry-uri "${MODEL_REGISTRY_URI}"
+  --model-registry-uri "${MODEL_REGISTRY_URI}" \
+  --promote
 """.strip()
 
 default_args = {

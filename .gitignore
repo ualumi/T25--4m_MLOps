@@ -6,4 +6,5 @@ __pycache__/
 .env.*
 !.env.example
 .private-docs/
+scripts/
 SERVICE_FILES.md

@@ -13,6 +13,8 @@ def test_gateway_config_from_env(monkeypatch) -> None:
     monkeypatch.setenv("DATASET_UPLOADS_PREFIX", "incoming")
     monkeypatch.setenv("PREDICTION_RESULTS_BUCKET", "prediction-results")
     monkeypatch.setenv("PREDICTION_RESULTS_PREFIX", "responses")
+    monkeypatch.setenv("SEGMENT_RESULTS_BUCKET", "segment-results")
+    monkeypatch.setenv("SEGMENT_RESULTS_PREFIX", "segments-v2")
     monkeypatch.setenv(
         "GATEWAY_DATABASE_URL",
         "postgresql://user:pass@localhost:5432/test_db",
@@ -32,3 +34,5 @@ def test_gateway_config_from_env(monkeypatch) -> None:
     assert config.dataset_upload_prefix == "incoming"
     assert config.prediction_results_bucket == "prediction-results"
     assert config.prediction_results_prefix == "responses"
+    assert config.segment_results_bucket == "segment-results"
+    assert config.segment_results_prefix == "segments-v2"

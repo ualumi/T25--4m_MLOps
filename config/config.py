@@ -5,6 +5,14 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from config.s3_layout import (
+    DEFAULT_DATASET_UPLOAD_PREFIX,
+    DEFAULT_MODEL_URI,
+    DEFAULT_PREDICTION_RESULTS_PREFIX,
+    DEFAULT_RETRAIN_SOURCE_PREFIX,
+    DEFAULT_SEGMENT_RESULTS_PREFIX,
+)
+
 
 def _int_env(name: str, default: int) -> int:
     raw = os.getenv(name)
@@ -39,8 +47,12 @@ class GatewayConfig:
     s3_region: str
     dataset_upload_bucket: str
     dataset_upload_prefix: str
+    retrain_source_bucket: str
+    retrain_source_prefix: str
     prediction_results_bucket: str
     prediction_results_prefix: str
+    segment_results_bucket: str
+    segment_results_prefix: str
 
 
 @dataclass(frozen=True)
@@ -73,12 +85,22 @@ def get_gateway_config() -> GatewayConfig:
         s3_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
         s3_region=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
         dataset_upload_bucket=os.getenv("DATASET_UPLOADS_BUCKET", "ml-artifacts"),
-        dataset_upload_prefix=os.getenv("DATASET_UPLOADS_PREFIX", "uploads"),
+        dataset_upload_prefix=os.getenv(
+            "DATASET_UPLOADS_PREFIX", DEFAULT_DATASET_UPLOAD_PREFIX
+        ),
+        retrain_source_bucket=os.getenv("RETRAIN_SOURCE_DATASETS_BUCKET", "ml-artifacts"),
+        retrain_source_prefix=os.getenv(
+            "RETRAIN_SOURCE_DATASETS_PREFIX", DEFAULT_RETRAIN_SOURCE_PREFIX
+        ),
         prediction_results_bucket=os.getenv(
             "PREDICTION_RESULTS_BUCKET", "ml-artifacts"
         ),
         prediction_results_prefix=os.getenv(
-            "PREDICTION_RESULTS_PREFIX", "prediction-results"
+            "PREDICTION_RESULTS_PREFIX", DEFAULT_PREDICTION_RESULTS_PREFIX
+        ),
+        segment_results_bucket=os.getenv("SEGMENT_RESULTS_BUCKET", "ml-artifacts"),
+        segment_results_prefix=os.getenv(
+            "SEGMENT_RESULTS_PREFIX", DEFAULT_SEGMENT_RESULTS_PREFIX
         ),
     )
 
@@ -87,11 +109,13 @@ def get_inference_config() -> InferenceConfig:
     return InferenceConfig(
         host=os.getenv("INFERENCE_HOST", "0.0.0.0"),
         port=_int_env("INFERENCE_PORT", 8001),
-        model_uri=os.getenv("MODEL_URI", "s3://ml-artifacts/models/lgb_model.joblib"),
+        model_uri=os.getenv("MODEL_URI", DEFAULT_MODEL_URI),
         s3_endpoint_url=os.getenv("S3_ENDPOINT_URL"),
         s3_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
         s3_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
         s3_region=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
         segment_results_bucket=os.getenv("SEGMENT_RESULTS_BUCKET", "ml-artifacts"),
-        segment_results_prefix=os.getenv("SEGMENT_RESULTS_PREFIX", "segments"),
+        segment_results_prefix=os.getenv(
+            "SEGMENT_RESULTS_PREFIX", DEFAULT_SEGMENT_RESULTS_PREFIX
+        ),
     )

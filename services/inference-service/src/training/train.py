@@ -16,7 +16,22 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
+from config.s3_layout import (
+    DEFAULT_BASELINE_MODEL_URI,
+    DEFAULT_FEATURE_SCHEMA_URI,
+    DEFAULT_FEATURE_STATS_URI,
+    DEFAULT_MODEL_INFO_URI,
+    DEFAULT_MODEL_REGISTRY_URI,
+    DEFAULT_MODEL_URI,
+    DEFAULT_REPORT_URI,
+    build_versioned_artifact_uris,
+)
 from src.infrastructure.storage.s3_artifact_store import S3ArtifactStore
+from src.training.model_registry import (
+    build_model_registry_entry,
+    load_model_registry,
+    upsert_model_entry,
+)
 from src.training.data import get_feature_columns, load_dataset, split_features_target
 from src.training.evaluate import evaluate_binary_classifier, score_classifier
 
@@ -27,13 +42,7 @@ REPO_ROOT = next(
 )
 DEFAULT_TRAIN_PATH = REPO_ROOT / "data" / "processed.csv"
 DEFAULT_TEST_PATH = REPO_ROOT / "data" / "test_data.csv"
-DEFAULT_PRODUCTION_MODEL_URI = "s3://ml-artifacts/models/lgb_model.joblib"
-DEFAULT_BASELINE_MODEL_URI = "s3://ml-artifacts/models/baseline_logreg.joblib"
-DEFAULT_REPORT_URI = "s3://ml-artifacts/reports/training_metrics.json"
-DEFAULT_FEATURE_SCHEMA_URI = "s3://ml-artifacts/models/feature_schema.json"
-DEFAULT_FEATURE_STATS_URI = "s3://ml-artifacts/models/feature_stats.json"
-DEFAULT_MODEL_INFO_URI = "s3://ml-artifacts/models/model_info.json"
-DEFAULT_MODEL_REGISTRY_URI = "s3://ml-artifacts/models/model_registry.json"
+DEFAULT_PRODUCTION_MODEL_URI = DEFAULT_MODEL_URI
 
 
 @dataclass(frozen=True)
@@ -53,8 +62,16 @@ class TrainingRunContext:
     test_path: str | Path
     top_share: float
     artifact_uris: TrainingArtifactUris
+    stable_production_model_uri: str
+    stable_baseline_model_uri: str
+    stable_report_uri: str
+    stable_feature_schema_uri: str
+    stable_feature_stats_uri: str
+    stable_model_info_uri: str
     generated_at: str
     version: str
+    promote: bool
+    source_dataset_uris: list[str]
 
 
 def build_baseline_model() -> Pipeline:
@@ -162,6 +179,17 @@ def build_feature_stats(dataset_path: str | Path) -> dict[str, Any]:
     }
 
 
+def _build_display_name(generated_at: str, *, promoted: bool) -> str:
+    if promoted:
+        return "Основная"
+    date_part = generated_at.split("T", maxsplit=1)[0]
+    try:
+        parsed = datetime.fromisoformat(date_part)
+    except ValueError:
+        return date_part
+    return parsed.strftime("%d.%m.%Y")
+
+
 def build_model_info(
     production_model: Any,
     baseline_model: Any,
@@ -171,9 +199,15 @@ def build_model_info(
     return {
         "generated_at": run_context.generated_at,
         "version": run_context.version,
+        "display_name": _build_display_name(
+            run_context.generated_at,
+            promoted=run_context.promote,
+        ),
         "train_path": str(run_context.train_path),
         "test_path": str(run_context.test_path),
         "top_share": run_context.top_share,
+        "promoted": run_context.promote,
+        "source_dataset_uris": run_context.source_dataset_uris,
         "production_model": {
             "type": type(production_model).__name__,
             "uri": run_context.artifact_uris.production_model_uri,
@@ -197,34 +231,36 @@ def build_model_registry(
     feature_schema: dict[str, Any],
     run_context: TrainingRunContext,
 ) -> dict[str, Any]:
-    return {
-        "generated_at": run_context.generated_at,
-        "current_version": run_context.version,
-        "models": [
-            {
-                "version": run_context.version,
-                "status": "production",
-                "top_share": run_context.top_share,
-                "feature_count": feature_schema["feature_count"],
-                "artifacts": {
-                    "production_model_uri": (
-                        run_context.artifact_uris.production_model_uri
-                    ),
-                    "baseline_model_uri": run_context.artifact_uris.baseline_model_uri,
-                    "report_uri": run_context.artifact_uris.report_uri,
-                    "feature_schema_uri": run_context.artifact_uris.feature_schema_uri,
-                    "feature_stats_uri": run_context.artifact_uris.feature_stats_uri,
-                    "model_info_uri": run_context.artifact_uris.model_info_uri,
-                    "model_registry_uri": run_context.artifact_uris.model_registry_uri,
-                },
-                "models": {
-                    "production_type": type(production_model).__name__,
-                    "baseline_type": type(baseline_model).__name__,
-                },
-                "metrics_summary": metrics,
-            }
-        ],
-    }
+    artifact_store = build_artifact_store()
+    existing_registry = load_model_registry(
+        artifact_store,
+        run_context.artifact_uris.model_registry_uri,
+    )
+    new_entry = build_model_registry_entry(
+        version=run_context.version,
+        status="production" if run_context.promote else "candidate",
+        generated_at=run_context.generated_at,
+        top_share=run_context.top_share,
+        feature_count=feature_schema["feature_count"],
+        artifacts={
+            "production_model_uri": run_context.artifact_uris.production_model_uri,
+            "baseline_model_uri": run_context.artifact_uris.baseline_model_uri,
+            "report_uri": run_context.artifact_uris.report_uri,
+            "feature_schema_uri": run_context.artifact_uris.feature_schema_uri,
+            "feature_stats_uri": run_context.artifact_uris.feature_stats_uri,
+            "model_info_uri": run_context.artifact_uris.model_info_uri,
+            "model_registry_uri": run_context.artifact_uris.model_registry_uri,
+        },
+        metrics_summary=metrics,
+        production_model_type=type(production_model).__name__,
+        baseline_model_type=type(baseline_model).__name__,
+        source_dataset_uris=run_context.source_dataset_uris,
+    )
+    return upsert_model_entry(
+        existing_registry,
+        new_entry,
+        promote=run_context.promote,
+    )
 
 
 def save_training_outputs(
@@ -236,6 +272,7 @@ def save_training_outputs(
     model_info: dict[str, Any],
     model_registry: dict[str, Any],
     artifact_uris: TrainingArtifactUris,
+    run_context: TrainingRunContext,
 ) -> None:
     artifact_store = build_artifact_store()
     artifact_store.save_joblib(artifact_uris.production_model_uri, production_model)
@@ -245,6 +282,31 @@ def save_training_outputs(
     artifact_store.save_json(artifact_uris.feature_stats_uri, feature_stats)
     artifact_store.save_json(artifact_uris.model_info_uri, model_info)
     artifact_store.save_json(artifact_uris.model_registry_uri, model_registry)
+    if run_context.promote:
+        artifact_store.copy_uri(
+            artifact_uris.production_model_uri,
+            run_context.stable_production_model_uri,
+        )
+        artifact_store.copy_uri(
+            artifact_uris.baseline_model_uri,
+            run_context.stable_baseline_model_uri,
+        )
+        artifact_store.copy_uri(
+            artifact_uris.report_uri,
+            run_context.stable_report_uri,
+        )
+        artifact_store.copy_uri(
+            artifact_uris.feature_schema_uri,
+            run_context.stable_feature_schema_uri,
+        )
+        artifact_store.copy_uri(
+            artifact_uris.feature_stats_uri,
+            run_context.stable_feature_stats_uri,
+        )
+        artifact_store.copy_uri(
+            artifact_uris.model_info_uri,
+            run_context.stable_model_info_uri,
+        )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -302,29 +364,64 @@ def build_parser() -> argparse.ArgumentParser:
         default=0.2,
         help="Top share used for ranking metrics.",
     )
+    parser.add_argument(
+        "--version",
+        default=None,
+        help="Explicit model version. Defaults to current UTC timestamp.",
+    )
+    parser.add_argument(
+        "--promote",
+        action="store_true",
+        help="Mark current version as production in model registry.",
+    )
+    parser.add_argument(
+        "--source-dataset-uri",
+        action="append",
+        default=[],
+        help="S3 URI of source dataset used for this training run. Can be repeated.",
+    )
     return parser
+
+
+def _build_versioned_artifact_uris(
+    model_registry_uri: str,
+    version: str,
+) -> TrainingArtifactUris:
+    artifact_uris = build_versioned_artifact_uris(model_registry_uri, version)
+    return TrainingArtifactUris(
+        production_model_uri=artifact_uris["production_model_uri"],
+        baseline_model_uri=artifact_uris["baseline_model_uri"],
+        report_uri=artifact_uris["report_uri"],
+        feature_schema_uri=artifact_uris["feature_schema_uri"],
+        feature_stats_uri=artifact_uris["feature_stats_uri"],
+        model_info_uri=artifact_uris["model_info_uri"],
+        model_registry_uri=artifact_uris["model_registry_uri"],
+    )
 
 
 def main() -> None:
     args = build_parser().parse_args()
     generated_at = datetime.now(timezone.utc).isoformat()
-    version = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    artifact_uris = TrainingArtifactUris(
-        production_model_uri=args.production_model_uri,
-        baseline_model_uri=args.baseline_model_uri,
-        report_uri=args.report_uri,
-        feature_schema_uri=args.feature_schema_uri,
-        feature_stats_uri=args.feature_stats_uri,
-        model_info_uri=args.model_info_uri,
+    version = args.version or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    artifact_uris = _build_versioned_artifact_uris(
         model_registry_uri=args.model_registry_uri,
+        version=version,
     )
     run_context = TrainingRunContext(
         train_path=args.train_path,
         test_path=args.test_path,
         top_share=args.top_share,
         artifact_uris=artifact_uris,
+        stable_production_model_uri=args.production_model_uri,
+        stable_baseline_model_uri=args.baseline_model_uri,
+        stable_report_uri=args.report_uri,
+        stable_feature_schema_uri=args.feature_schema_uri,
+        stable_feature_stats_uri=args.feature_stats_uri,
+        stable_model_info_uri=args.model_info_uri,
         generated_at=generated_at,
         version=version,
+        promote=args.promote,
+        source_dataset_uris=list(args.source_dataset_uri),
     )
 
     baseline_model, baseline_metrics = train_and_evaluate_model(
@@ -368,6 +465,7 @@ def main() -> None:
         model_info=model_info,
         model_registry=model_registry,
         artifact_uris=artifact_uris,
+        run_context=run_context,
     )
     print(json.dumps(metrics, indent=2))
 

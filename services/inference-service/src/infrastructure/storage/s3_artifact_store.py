@@ -62,6 +62,12 @@ class S3ArtifactStore:
             raise
         return response["Body"].read()
 
+    def load_json(self, uri: str) -> dict[str, Any]:
+        payload = json.loads(self.download_bytes(uri).decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError(f"S3 JSON artifact must contain an object: {uri}")
+        return payload
+
     def upload_bytes(
         self,
         uri: str,
@@ -76,6 +82,36 @@ class S3ArtifactStore:
             Body=data,
             ContentType=content_type,
         )
+
+    def list_uris(self, bucket: str, prefix: str) -> list[str]:
+        normalized_prefix = prefix.strip("/")
+        paginator = self._client.get_paginator("list_objects_v2")
+        uris: list[str] = []
+        for page in paginator.paginate(Bucket=bucket, Prefix=normalized_prefix):
+            for item in page.get("Contents", []):
+                key = item["Key"]
+                if key.endswith("/"):
+                    continue
+                uris.append(f"s3://{bucket}/{key}")
+        return sorted(uris)
+
+    def copy_uri(self, source_uri: str, destination_uri: str) -> None:
+        source_bucket, source_key = parse_s3_uri(source_uri)
+        destination_bucket, destination_key = parse_s3_uri(destination_uri)
+        self.ensure_bucket(destination_bucket)
+        self._client.copy(
+            CopySource={"Bucket": source_bucket, "Key": source_key},
+            Bucket=destination_bucket,
+            Key=destination_key,
+        )
+
+    def delete_uri(self, uri: str) -> None:
+        bucket, key = parse_s3_uri(uri)
+        self._client.delete_object(Bucket=bucket, Key=key)
+
+    def move_uri(self, source_uri: str, destination_uri: str) -> None:
+        self.copy_uri(source_uri, destination_uri)
+        self.delete_uri(source_uri)
 
     def load_joblib(self, uri: str) -> Any:
         return joblib.load(io.BytesIO(self.download_bytes(uri)))

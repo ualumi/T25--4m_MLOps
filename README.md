@@ -118,8 +118,8 @@
 - поведенческие признаки;
 - целевую переменную `churn`.
 
-Основная модель проекта хранится в `S3` по URI вида `s3://ml-artifacts/models/lgb_model.joblib`.  
-Дополнительно в том же хранилище сохраняется `baseline_logreg.joblib` как базовая модель для сравнения с основной LightGBM.
+Основная production-модель проекта хранится в `S3` по URI вида `s3://ml-artifacts/models/production/model.joblib`.  
+Дополнительно в том же хранилище сохраняется `s3://ml-artifacts/models/production/baseline.joblib` как базовая модель для сравнения с основной LightGBM.
 
 ## Офлайн-оценка качества
 
@@ -132,7 +132,7 @@
 - `Precision@Top Share`
 - `Lift@Top Share`
 
-Результаты offline-обучения и оценки также сохраняются в `S3`, например по URI `s3://ml-artifacts/reports/training_metrics.json`.
+Результаты offline-обучения и оценки также сохраняются в `S3`, например по URI `s3://ml-artifacts/models/production/training_metrics.json`.
 
 ## Хранилище артефактов
 
@@ -229,6 +229,65 @@ docker compose up --build
 По умолчанию DAG запускается по расписанию `0 2 * * *`, а изменить его можно через `AIRFLOW_RETRAIN_SCHEDULE` в `.env`.
 
 Airflow UI доступен по адресу `http://localhost:8080`, логин и пароль задаются переменными `AIRFLOW_ADMIN_USERNAME` и `AIRFLOW_ADMIN_PASSWORD`.
+
+## DAG с promotion модели
+
+В проект также добавлен DAG `churn_candidate_promotion_pipeline` для controlled retraining на пользовательских датасетах.
+
+Он выполняет следующие шаги:
+
+1. читает новые датасеты из `S3` по префиксу `RETRAIN_SOURCE_DATASETS_PREFIX`;
+2. валидирует, что датасет имеет ту же схему, что и тренировочные данные, и содержит `churn`;
+3. объединяет все новые валидные датасеты в один candidate training set;
+4. обучает новую candidate-версию модели и сохраняет артефакты в `models/versions/<version>/...`;
+5. сравнивает candidate-модель с текущей production по `roc_auc` на одном и том же тестовом датасете;
+6. если `roc_auc` улучшился, переводит candidate в production и обновляет стабильные URI;
+7. если `roc_auc` не улучшился, переносит использованные датасеты в `RETRAIN_NON_PROMOTED_PREFIX`.
+
+Таким образом в `S3` появляется история версий модели, а production переключается только после успешного сравнения метрики.
+
+Display-названия версий устроены так:
+
+- текущая production-версия отображается как `Основная`;
+- остальные версии отображаются по дате создания в формате `DD.MM.YYYY`.
+
+По умолчанию `churn_candidate_promotion_pipeline` запускается раз в месяц, по cron `0 0 1 * *`. Изменить расписание можно через `AIRFLOW_PROMOTION_SCHEDULE` в `.env`.
+
+Для загрузки данных теперь используются два разных сценария:
+
+- `/predict/upload` — upload датасета для batch inference, ожидает `client_id` и признаки клиентов;
+- `/datasets/upload-training` — upload обучающего CSV для retraining DAG, ожидает `user_id`, все feature columns и `churn`.
+
+Актуальная структура объектов в `S3`:
+
+```text
+ml-artifacts/
+  inference/
+    uploads/
+    results/
+    segments/
+  training/
+    uploads/
+    non-promoted/
+  models/
+    production/
+      model.joblib
+      baseline.joblib
+      model_info.json
+      feature_schema.json
+      feature_stats.json
+      training_metrics.json
+    versions/
+      <version>/
+        model.joblib
+        baseline.joblib
+        model_info.json
+        feature_schema.json
+        feature_stats.json
+        training_metrics.json
+    registry/
+      model_registry.json
+```
 
 ## Проверка качества кода
 

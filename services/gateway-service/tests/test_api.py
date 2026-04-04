@@ -1,8 +1,15 @@
 import json
+import importlib.util
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from src.api import app
+API_PATH = Path(__file__).resolve().parents[1] / "src" / "api.py"
+SPEC = importlib.util.spec_from_file_location("gateway_test_api_module", API_PATH)
+assert SPEC is not None and SPEC.loader is not None
+GATEWAY_API = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(GATEWAY_API)
+app = GATEWAY_API.app
 
 VALID_FEATURES = [0.1] * 28
 
@@ -65,7 +72,26 @@ class StubDatasetStore:
                 "subfolder": subfolder,
             }
         )
-        return f"s3://ml-artifacts/prediction-results/{user_id}/{subfolder}/{filename}"
+        return f"s3://ml-artifacts/inference/uploads/{user_id}/{subfolder}/{filename}"
+
+
+class StubRetrainingDatasetStore(StubDatasetStore):
+    def save_dataset(self, user_id, filename, data, content_type, subfolder=None):
+        self.saved.append(
+            {
+                "user_id": user_id,
+                "filename": filename,
+                "data": data,
+                "content_type": content_type,
+                "subfolder": subfolder,
+            }
+        )
+        return f"s3://ml-artifacts/training/uploads/{user_id}/{subfolder}/{filename}"
+
+
+class StubSessionStore:
+    def is_valid(self, user_id, token):
+        return user_id == "u-1" and token == "token-123"
 
 
 class StubPredictionResultStore:
@@ -81,7 +107,21 @@ class StubPredictionResultStore:
                 "subfolder": subfolder,
             }
         )
-        return f"s3://ml-artifacts/prediction-results/{user_id}/{subfolder}/{name}"
+        return f"s3://ml-artifacts/inference/results/{user_id}/{subfolder}/{name}"
+
+
+class StubSegmentResultStore(StubPredictionResultStore):
+    def save_json_artifact(self, user_id, name, payload, subfolder=None):
+        self.saved.append(
+            {
+                "user_id": user_id,
+                "name": name,
+                "payload": payload,
+                "subfolder": subfolder,
+            }
+        )
+        suffix = f"/{subfolder}" if subfolder else ""
+        return f"s3://ml-artifacts/inference/segments/{user_id}{suffix}/{name}"
 
 
 def test_connect_and_predict() -> None:
@@ -106,7 +146,7 @@ def test_connect_and_predict() -> None:
     assert predict_response.json()["score"] == 0.61
     assert (
         predict_response.json()["result_uri"]
-        == "s3://ml-artifacts/prediction-results/u-1/one-predict/prediction-result.json"
+        == "s3://ml-artifacts/inference/results/u-1/one-predict/prediction-result.json"
     )
     assert app.state.prediction_result_store.saved[0]["subfolder"] == "one-predict"
     metadata = app.state.prediction_result_store.saved[0]["payload"]["metadata"]
@@ -143,7 +183,7 @@ def test_predict_batch() -> None:
     assert body["predictions"][0]["score"] == 0.61
     assert (
         body["result_uri"]
-        == "s3://ml-artifacts/prediction-results/u-1/batch/prediction-result.json"
+        == "s3://ml-artifacts/inference/results/u-1/batch/prediction-result.json"
     )
     assert app.state.prediction_result_store.saved[0]["subfolder"] == "batch"
     metadata = app.state.prediction_result_store.saved[0]["payload"]["metadata"]
@@ -205,11 +245,11 @@ def test_predict_upload_json() -> None:
     assert body["predictions"][0]["client_id"] == "c-1"
     assert (
         body["dataset_uri"]
-        == "s3://ml-artifacts/prediction-results/u-1/uploads/clients.json"
+        == "s3://ml-artifacts/inference/uploads/u-1/uploads/clients.json"
     )
     assert (
         body["result_uri"]
-        == "s3://ml-artifacts/prediction-results/u-1/uploads/prediction-result.json"
+        == "s3://ml-artifacts/inference/results/u-1/uploads/prediction-result.json"
     )
     assert app.state.dataset_store.saved[0]["filename"] == "clients.json"
     assert app.state.dataset_store.saved[0]["subfolder"] == "uploads"
@@ -251,11 +291,11 @@ def test_predict_upload_csv() -> None:
     assert body["predictions"][1]["client_id"] == "c-2"
     assert (
         body["dataset_uri"]
-        == "s3://ml-artifacts/prediction-results/u-1/uploads/clients.csv"
+        == "s3://ml-artifacts/inference/uploads/u-1/uploads/clients.csv"
     )
     assert (
         body["result_uri"]
-        == "s3://ml-artifacts/prediction-results/u-1/uploads/prediction-result.json"
+        == "s3://ml-artifacts/inference/results/u-1/uploads/prediction-result.json"
     )
     assert app.state.dataset_store.saved[0]["content_type"] == "text/csv"
     assert app.state.prediction_result_store.saved[0]["subfolder"] == "uploads"
@@ -285,7 +325,7 @@ def test_predict_upload_rejects_unsupported_file_type() -> None:
 
 def test_segment() -> None:
     app.state.predict_use_case = StubPredict()
-    app.state.prediction_result_store = StubPredictionResultStore()
+    app.state.segment_result_store = StubSegmentResultStore()
     client = TestClient(app)
 
     response = client.post(
@@ -308,12 +348,68 @@ def test_segment() -> None:
     assert body["segment"][0]["user_id"] == "c-2"
     assert (
         body["result_uri"]
-        == "s3://ml-artifacts/prediction-results/u-1/segments/prediction-result.json"
+        == "s3://ml-artifacts/inference/segments/u-1/segment-result.json"
     )
-    assert app.state.prediction_result_store.saved[0]["subfolder"] == "segments"
-    metadata = app.state.prediction_result_store.saved[0]["payload"]["metadata"]
+    assert app.state.segment_result_store.saved[0]["subfolder"] is None
+    metadata = app.state.segment_result_store.saved[0]["payload"]["metadata"]
     assert metadata["endpoint"] == "/segment"
     assert metadata["record_count"] == 2
 
     del app.state.predict_use_case
-    del app.state.prediction_result_store
+    del app.state.segment_result_store
+
+
+def test_upload_training_dataset() -> None:
+    app.state.session_store = StubSessionStore()
+    app.state.retraining_dataset_store = StubRetrainingDatasetStore()
+    client = TestClient(app)
+    csv_content = "\n".join(
+        [
+            "user_id,feature_a,feature_b,churn",
+            "u-1,0.1,0.2,1",
+            "u-2,0.3,0.4,0",
+        ]
+    )
+
+    response = client.post(
+        "/datasets/upload-training",
+        data={"user_id": "u-1", "session_token": "token-123"},
+        files={"file": ("training.csv", csv_content, "text/csv")},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "uploaded"
+    assert body["record_count"] == 2
+    assert (
+        body["dataset_uri"]
+        == "s3://ml-artifacts/training/uploads/u-1/training/training.csv"
+    )
+    assert app.state.retraining_dataset_store.saved[0]["subfolder"] == "training"
+
+    del app.state.session_store
+    del app.state.retraining_dataset_store
+
+
+def test_upload_training_dataset_rejects_missing_churn() -> None:
+    app.state.session_store = StubSessionStore()
+    app.state.retraining_dataset_store = StubRetrainingDatasetStore()
+    client = TestClient(app)
+    csv_content = "\n".join(
+        [
+            "user_id,feature_a,feature_b",
+            "u-1,0.1,0.2",
+        ]
+    )
+
+    response = client.post(
+        "/datasets/upload-training",
+        data={"user_id": "u-1", "session_token": "token-123"},
+        files={"file": ("training.csv", csv_content, "text/csv")},
+    )
+
+    assert response.status_code == 400
+    assert "churn" in response.json()["detail"]
+
+    del app.state.session_store
+    del app.state.retraining_dataset_store

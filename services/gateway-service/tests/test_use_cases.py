@@ -34,7 +34,7 @@ class StubInference:
                     "rank": 1,
                 }
             ],
-            "result_uri": "s3://ml-artifacts/segments/result.json",
+            "result_uri": "s3://ml-artifacts/inference/segments/result.json",
         }
 
 

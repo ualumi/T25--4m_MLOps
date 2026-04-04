@@ -73,8 +73,21 @@ def get_predict_use_case() -> RequestPredictionUseCase:
 def get_dataset_store() -> S3DatasetStore:
     config = get_gateway_config()
     return S3DatasetStore(
-        bucket=config.prediction_results_bucket,
-        prefix=config.prediction_results_prefix,
+        bucket=config.dataset_upload_bucket,
+        prefix=config.dataset_upload_prefix,
+        endpoint_url=config.s3_endpoint_url,
+        access_key_id=config.s3_access_key_id,
+        secret_access_key=config.s3_secret_access_key,
+        region=config.s3_region,
+    )
+
+
+@lru_cache(maxsize=1)
+def get_retraining_dataset_store() -> S3DatasetStore:
+    config = get_gateway_config()
+    return S3DatasetStore(
+        bucket=config.retrain_source_bucket,
+        prefix=config.retrain_source_prefix,
         endpoint_url=config.s3_endpoint_url,
         access_key_id=config.s3_access_key_id,
         secret_access_key=config.s3_secret_access_key,
@@ -88,6 +101,19 @@ def get_prediction_result_store() -> S3DatasetStore:
     return S3DatasetStore(
         bucket=config.prediction_results_bucket,
         prefix=config.prediction_results_prefix,
+        endpoint_url=config.s3_endpoint_url,
+        access_key_id=config.s3_access_key_id,
+        secret_access_key=config.s3_secret_access_key,
+        region=config.s3_region,
+    )
+
+
+@lru_cache(maxsize=1)
+def get_segment_result_store() -> S3DatasetStore:
+    config = get_gateway_config()
+    return S3DatasetStore(
+        bucket=config.segment_results_bucket,
+        prefix=config.segment_results_prefix,
         endpoint_url=config.s3_endpoint_url,
         access_key_id=config.s3_access_key_id,
         secret_access_key=config.s3_secret_access_key,
@@ -119,6 +145,30 @@ def _save_prediction_result(
             "response": response_payload,
         },
         subfolder=result_kind,
+    )
+
+
+def _save_segment_result(
+    user_id: str,
+    request_payload: Mapping[str, object],
+    response_payload: Mapping[str, object],
+    record_count: int,
+) -> str:
+    result_store = getattr(app.state, "segment_result_store", None) or (
+        get_segment_result_store()
+    )
+    return result_store.save_json_artifact(
+        user_id=user_id,
+        name="segment-result.json",
+        payload={
+            "metadata": {
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "endpoint": "/segment",
+                "record_count": record_count,
+            },
+            "request": request_payload,
+            "response": response_payload,
+        },
     )
 
 
@@ -247,12 +297,10 @@ def segment(payload: SegmentRequest) -> SegmentResponse:
         "top_segment_size": result["top_segment_size"],
         "top_segment": [user.model_dump() for user in top_segment_users],
     }
-    result_uri = _save_prediction_result(
+    result_uri = _save_segment_result(
         user_id=payload.user_id,
         request_payload=payload.model_dump(),
         response_payload=response_payload,
-        result_kind="segments",
-        endpoint="/segment",
         record_count=len(payload.users),
     )
     return SegmentResponse(
@@ -347,6 +395,50 @@ def _build_batch_request_from_upload(
         raise HTTPException(status_code=422, detail=exc.errors()) from exc
 
 
+def _validate_training_csv(raw_content: bytes) -> int:
+    try:
+        text = raw_content.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=400, detail="CSV file must be UTF-8 encoded.") from exc
+
+    reader = csv.DictReader(io.StringIO(text))
+    if not reader.fieldnames:
+        raise HTTPException(status_code=400, detail="CSV file must contain a header row.")
+    if "user_id" not in reader.fieldnames:
+        raise HTTPException(
+            status_code=400,
+            detail="Training CSV file must contain a 'user_id' column.",
+        )
+    if "churn" not in reader.fieldnames:
+        raise HTTPException(
+            status_code=400,
+            detail="Training CSV file must contain a 'churn' column.",
+        )
+
+    row_count = 0
+    for row_number, row in enumerate(reader, start=2):
+        user_id = (row.get("user_id") or "").strip()
+        churn = (row.get("churn") or "").strip()
+        if not user_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Row {row_number} has an empty user_id.",
+            )
+        if churn not in {"0", "1"}:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Row {row_number} must contain churn value 0 or 1.",
+            )
+        row_count += 1
+
+    if row_count < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Training CSV file must contain at least one data row.",
+        )
+    return row_count
+
+
 @app.post("/predict/batch", response_model=BatchPredictResponse)
 def predict_batch(payload: BatchPredictRequest) -> BatchPredictResponse:
     return _run_batch_prediction(payload, result_kind="batch")
@@ -379,3 +471,39 @@ async def predict_upload(
         dataset_uri=dataset_uri,
         result_kind="uploads",
     )
+
+
+@app.post("/datasets/upload-training")
+async def upload_training_dataset(
+    user_id: str = Form(...),
+    session_token: str = Form(...),
+    file: UploadFile = File(...),
+) -> dict[str, object]:
+    session_store = getattr(app.state, "session_store", None) or get_session_store()
+    if not session_store.is_valid(user_id=user_id, token=session_token):
+        raise HTTPException(status_code=401, detail="Invalid session. Connect first.")
+
+    raw_content = await file.read()
+    filename = file.filename or "training-dataset.csv"
+    if Path(filename).suffix.lower() != ".csv":
+        raise HTTPException(
+            status_code=400,
+            detail="Supported training dataset format is .csv.",
+        )
+
+    record_count = _validate_training_csv(raw_content)
+    dataset_store = getattr(app.state, "retraining_dataset_store", None) or (
+        get_retraining_dataset_store()
+    )
+    dataset_uri = dataset_store.save_dataset(
+        user_id=user_id,
+        filename=filename,
+        data=raw_content,
+        content_type=file.content_type or "text/csv",
+        subfolder="training",
+    )
+    return {
+        "dataset_uri": dataset_uri,
+        "record_count": record_count,
+        "status": "uploaded",
+    }

@@ -42,10 +42,18 @@ class FakeArtifactStore:
     def load_joblib(self, uri: str):
         return joblib.load(io.BytesIO(self.objects[uri]))
 
+    def load_json(self, uri: str) -> dict:
+        if uri not in self.objects:
+            raise FileNotFoundError(uri)
+        return json.loads(self.objects[uri].decode("utf-8"))
+
     def save_joblib(self, uri: str, artifact) -> None:
         buffer = io.BytesIO()
         joblib.dump(artifact, buffer)
         self.objects[uri] = buffer.getvalue()
+
+    def copy_uri(self, source_uri: str, destination_uri: str) -> None:
+        self.objects[destination_uri] = self.objects[source_uri]
 
     def save_json(self, uri: str, payload: dict) -> None:
         self.objects[uri] = json.dumps(payload, indent=2).encode("utf-8")
@@ -53,13 +61,13 @@ class FakeArtifactStore:
 
 def _artifact_uris() -> dict[str, str]:
     return {
-        "production_model_uri": "s3://ml-artifacts/models/lgb_model.joblib",
-        "baseline_model_uri": "s3://ml-artifacts/models/baseline_logreg.joblib",
-        "report_uri": "s3://ml-artifacts/reports/training_metrics.json",
-        "feature_schema_uri": "s3://ml-artifacts/models/feature_schema.json",
-        "feature_stats_uri": "s3://ml-artifacts/models/feature_stats.json",
-        "model_info_uri": "s3://ml-artifacts/models/model_info.json",
-        "model_registry_uri": "s3://ml-artifacts/models/model_registry.json",
+        "production_model_uri": "s3://ml-artifacts/models/production/model.joblib",
+        "baseline_model_uri": "s3://ml-artifacts/models/production/baseline.joblib",
+        "report_uri": "s3://ml-artifacts/models/production/training_metrics.json",
+        "feature_schema_uri": "s3://ml-artifacts/models/production/feature_schema.json",
+        "feature_stats_uri": "s3://ml-artifacts/models/production/feature_stats.json",
+        "model_info_uri": "s3://ml-artifacts/models/production/model_info.json",
+        "model_registry_uri": "s3://ml-artifacts/models/registry/model_registry.json",
     }
 
 
@@ -97,6 +105,7 @@ def test_train_main_creates_models_and_report(tmp_path, monkeypatch, capsys) -> 
             artifact_uris["model_registry_uri"],
             "--top-share",
             "0.5",
+            "--promote",
         ],
     )
 
@@ -128,26 +137,37 @@ def test_train_main_creates_models_and_report(tmp_path, monkeypatch, capsys) -> 
     model_info = json.loads(
         artifact_store.objects[artifact_uris["model_info_uri"]].decode("utf-8")
     )
-    assert (
-        model_info["production_model"]["uri"] == artifact_uris["production_model_uri"]
+    version = model_info["version"]
+    assert model_info["production_model"]["uri"].endswith(
+        f"/models/versions/{version}/model.joblib"
     )
-    assert model_info["feature_schema_uri"] == artifact_uris["feature_schema_uri"]
-    assert model_info["feature_stats_uri"] == artifact_uris["feature_stats_uri"]
+    assert model_info["feature_schema_uri"].endswith(
+        f"/models/versions/{version}/feature_schema.json"
+    )
+    assert model_info["feature_stats_uri"].endswith(
+        f"/models/versions/{version}/feature_stats.json"
+    )
     assert model_info["model_registry_uri"] == artifact_uris["model_registry_uri"]
     assert model_info["top_share"] == 0.5
     assert model_info["version"]
+    assert model_info["display_name"] == "Основная"
+    assert model_info["promoted"] is True
 
     model_registry = json.loads(
         artifact_store.objects[artifact_uris["model_registry_uri"]].decode("utf-8")
     )
-    assert model_registry["current_version"]
+    assert model_registry["current_version"] == version
+    assert model_registry["current_display_name"] == "Основная"
+    assert model_registry["models"][0]["status"] == "production"
+    assert model_registry["models"][0]["display_name"] == "Основная"
     assert (
         model_registry["models"][0]["artifacts"]["model_registry_uri"]
         == artifact_uris["model_registry_uri"]
     )
     assert (
-        model_registry["models"][0]["artifacts"]["feature_stats_uri"]
-        == artifact_uris["feature_stats_uri"]
+        model_registry["models"][0]["artifacts"]["production_model_uri"].endswith(
+            f"/models/versions/{version}/model.joblib"
+        )
     )
 
     stdout = capsys.readouterr().out
