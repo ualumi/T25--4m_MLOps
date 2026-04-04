@@ -65,8 +65,7 @@ def test_joblib_model_scorer_loads_model_from_s3() -> None:
 
     assert score == 0.8
     assert (
-        artifact_store.loaded_uri
-        == "s3://ml-artifacts/models/production/model.joblib"
+        artifact_store.loaded_uri == "s3://ml-artifacts/models/production/model.joblib"
     )
 
 
@@ -105,7 +104,9 @@ def test_s3_artifact_store_load_json_requires_object(monkeypatch) -> None:
     )
 
     try:
-        artifact_store.load_json("s3://ml-artifacts/models/registry/model_registry.json")
+        artifact_store.load_json(
+            "s3://ml-artifacts/models/registry/model_registry.json"
+        )
         assert False, "ValueError was expected"
     except ValueError as exc:
         assert "must contain an object" in str(exc)

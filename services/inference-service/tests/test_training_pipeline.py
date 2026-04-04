@@ -164,10 +164,8 @@ def test_train_main_creates_models_and_report(tmp_path, monkeypatch, capsys) -> 
         model_registry["models"][0]["artifacts"]["model_registry_uri"]
         == artifact_uris["model_registry_uri"]
     )
-    assert (
-        model_registry["models"][0]["artifacts"]["production_model_uri"].endswith(
-            f"/models/versions/{version}/model.joblib"
-        )
+    assert model_registry["models"][0]["artifacts"]["production_model_uri"].endswith(
+        f"/models/versions/{version}/model.joblib"
     )
 
     stdout = capsys.readouterr().out

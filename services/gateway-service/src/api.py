@@ -399,11 +399,15 @@ def _validate_training_csv(raw_content: bytes) -> int:
     try:
         text = raw_content.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
-        raise HTTPException(status_code=400, detail="CSV file must be UTF-8 encoded.") from exc
+        raise HTTPException(
+            status_code=400, detail="CSV file must be UTF-8 encoded."
+        ) from exc
 
     reader = csv.DictReader(io.StringIO(text))
     if not reader.fieldnames:
-        raise HTTPException(status_code=400, detail="CSV file must contain a header row.")
+        raise HTTPException(
+            status_code=400, detail="CSV file must contain a header row."
+        )
     if "user_id" not in reader.fieldnames:
         raise HTTPException(
             status_code=400,

@@ -43,9 +43,13 @@ def _normalize_model_entry(entry: dict[str, Any]) -> dict[str, Any]:
         "generated_at": entry.get("generated_at", _now_iso()),
         "display_name": entry.get(
             "display_name",
-            "Основная"
-            if entry.get("status") == "production"
-            else _display_name_from_generated_at(entry.get("generated_at", _now_iso())),
+            (
+                "Основная"
+                if entry.get("status") == "production"
+                else _display_name_from_generated_at(
+                    entry.get("generated_at", _now_iso())
+                )
+            ),
         ),
         "top_share": entry.get("top_share"),
         "feature_count": entry.get("feature_count"),
@@ -118,9 +122,11 @@ def build_model_registry_entry(
         "version": version,
         "status": status,
         "generated_at": generated_at,
-        "display_name": "Основная"
-        if status == "production"
-        else _display_name_from_generated_at(generated_at),
+        "display_name": (
+            "Основная"
+            if status == "production"
+            else _display_name_from_generated_at(generated_at)
+        ),
         "top_share": top_share,
         "feature_count": feature_count,
         "source_dataset_uris": list(source_dataset_uris or []),
@@ -143,7 +149,9 @@ def upsert_model_entry(
 ) -> dict[str, Any]:
     normalized = normalize_registry(registry)
     models = [
-        entry for entry in normalized["models"] if entry["version"] != new_entry["version"]
+        entry
+        for entry in normalized["models"]
+        if entry["version"] != new_entry["version"]
     ]
 
     if promote:
@@ -162,7 +170,10 @@ def upsert_model_entry(
             new_entry["display_name"] = _display_name_from_generated_at(
                 new_entry["generated_at"]
             )
-        if normalized["current_version"] is None and new_entry["status"] == "production":
+        if (
+            normalized["current_version"] is None
+            and new_entry["status"] == "production"
+        ):
             normalized["current_version"] = new_entry["version"]
 
     models.append(_normalize_model_entry(new_entry))
