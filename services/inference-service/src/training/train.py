@@ -27,13 +27,13 @@ from config.s3_layout import (
     build_versioned_artifact_uris,
 )
 from src.infrastructure.storage.s3_artifact_store import S3ArtifactStore
+from src.training.data import get_feature_columns, load_dataset, split_features_target
+from src.training.evaluate import evaluate_binary_classifier, score_classifier
 from src.training.model_registry import (
     build_model_registry_entry,
     load_model_registry,
     upsert_model_entry,
 )
-from src.training.data import get_feature_columns, load_dataset, split_features_target
-from src.training.evaluate import evaluate_binary_classifier, score_classifier
 
 CURRENT_FILE = Path(__file__).resolve()
 REPO_ROOT = next(
