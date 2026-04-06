@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import io
 import os
-import subprocess
 import sys
-import tempfile
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -14,6 +12,8 @@ from urllib.request import Request, urlopen
 import pandas as pd
 from airflow.decorators import dag, task
 from airflow.exceptions import AirflowSkipException
+from airflow.providers.docker.operators.docker import DockerOperator
+from docker.types import Mount
 
 PROJECT_ROOT = Path("/opt/project")
 INFERENCE_SERVICE_ROOT = PROJECT_ROOT / "services" / "inference-service"
@@ -43,6 +43,14 @@ from src.training.evaluate import evaluate_saved_model  # noqa: E402
 from src.training.model_registry import load_model_registry, upsert_model_entry  # noqa: E402
 
 INFERENCE_BASE_URL = os.getenv("AIRFLOW_INFERENCE_BASE_URL", "http://inference-service:8001")
+AIRFLOW_TRAIN_IMAGE = os.getenv(
+    "AIRFLOW_TRAIN_IMAGE",
+    os.getenv("INFERENCE_SERVICE_IMAGE", "mlops/inference-service:latest"),
+)
+AIRFLOW_DOCKER_NETWORK = os.getenv("AIRFLOW_DOCKER_NETWORK", "mlops_network")
+AIRFLOW_DOCKER_HOST = os.getenv("AIRFLOW_DOCKER_HOST", "unix://var/run/docker.sock")
+AIRFLOW_SHARED_VOLUME = os.getenv("AIRFLOW_SHARED_VOLUME", "airflow_shared")
+AIRFLOW_SHARED_DIR = os.getenv("AIRFLOW_SHARED_DIR", "/opt/airflow/shared")
 SOURCE_DATASETS_BUCKET = os.getenv("RETRAIN_SOURCE_DATASETS_BUCKET") or os.getenv(
     "RETRAIN_SOURCE_DATASETS_BUCKET",
     "ml-artifacts",
@@ -167,6 +175,26 @@ def _non_promoted_destination_uri(source_uri: str, version: str) -> str:
     return f"s3://{bucket}/{NON_PROMOTED_PREFIX.strip('/')}/{version}/{original_name}"
 
 
+def _candidate_train_command_template() -> str:
+    return (
+        "python -m src.training.train "
+        "--train-path \"{{ ti.xcom_pull(task_ids='prepare_candidate_dataset')['candidate_train_path'] }}\" "
+        "--test-path /app/data/test_data.csv "
+        f"--production-model-uri {MODEL_URI} "
+        f"--baseline-model-uri {BASELINE_MODEL_URI} "
+        f"--report-uri {REPORT_URI} "
+        f"--feature-schema-uri {FEATURE_SCHEMA_URI} "
+        f"--feature-stats-uri {FEATURE_STATS_URI} "
+        f"--model-info-uri {MODEL_INFO_URI} "
+        f"--model-registry-uri {MODEL_REGISTRY_URI} "
+        f"--top-share {TOP_SHARE} "
+        "--version \"{{ ti.xcom_pull(task_ids='prepare_candidate_dataset')['version'] }}\" "
+        "{% for uri in ti.xcom_pull(task_ids='prepare_candidate_dataset')['source_dataset_uris'] %}"
+        "--source-dataset-uri \"{{ uri }}\" "
+        "{% endfor %}"
+    )
+
+
 @dag(
     dag_id="churn_candidate_promotion_pipeline",
     description="Train candidate model from uploaded datasets and promote only if ROC-AUC improves.",
@@ -224,7 +252,8 @@ def churn_candidate_promotion_pipeline():
                 "Merged candidate dataset does not contain both target classes."
             )
 
-        candidate_train_path = Path(tempfile.gettempdir()) / f"candidate-train-{version}.csv"
+        candidate_train_path = Path(AIRFLOW_SHARED_DIR) / f"candidate-train-{version}.csv"
+        candidate_train_path.parent.mkdir(parents=True, exist_ok=True)
         merged_frame.to_csv(candidate_train_path, index=False)
 
         return {
@@ -234,46 +263,6 @@ def churn_candidate_promotion_pipeline():
             "invalid_dataset_uris": invalid_uris,
             "artifact_uris": _build_candidate_artifact_uris(version),
         }
-
-    @task
-    def train_candidate_model(payload: dict[str, object]) -> dict[str, object]:
-        artifact_uris = payload["artifact_uris"]
-        command = [
-            sys.executable,
-            "-m",
-            "src.training.train",
-            "--train-path",
-            str(payload["candidate_train_path"]),
-            "--test-path",
-            TEST_DATASET_PATH,
-            "--production-model-uri",
-            MODEL_URI,
-            "--baseline-model-uri",
-            BASELINE_MODEL_URI,
-            "--report-uri",
-            REPORT_URI,
-            "--feature-schema-uri",
-            FEATURE_SCHEMA_URI,
-            "--feature-stats-uri",
-            FEATURE_STATS_URI,
-            "--model-info-uri",
-            MODEL_INFO_URI,
-            "--model-registry-uri",
-            MODEL_REGISTRY_URI,
-            "--top-share",
-            str(TOP_SHARE),
-            "--version",
-            str(payload["version"]),
-        ]
-        for uri in payload["source_dataset_uris"]:
-            command.extend(["--source-dataset-uri", str(uri)])
-
-        subprocess.run(
-            command,
-            check=True,
-            cwd=INFERENCE_SERVICE_ROOT,
-        )
-        return payload
 
     @task
     def compare_candidate_to_production(payload: dict[str, object]) -> dict[str, object]:
@@ -377,10 +366,34 @@ def churn_candidate_promotion_pipeline():
 
     ready = wait_for_inference()
     prepared = prepare_candidate_dataset()
-    trained = train_candidate_model(prepared)
-    decision = compare_candidate_to_production(trained)
+    train_candidate_model_task = DockerOperator(
+        task_id="train_candidate_model",
+        image=AIRFLOW_TRAIN_IMAGE,
+        entrypoint=["/bin/sh", "-c"],
+        command=_candidate_train_command_template(),
+        docker_url=AIRFLOW_DOCKER_HOST,
+        network_mode=AIRFLOW_DOCKER_NETWORK,
+        environment={
+            "S3_ENDPOINT_URL": os.getenv("S3_ENDPOINT_URL", ""),
+            "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID", ""),
+            "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY", ""),
+            "AWS_DEFAULT_REGION": os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
+        },
+        mounts=[
+            Mount(
+                source=AIRFLOW_SHARED_VOLUME,
+                target=AIRFLOW_SHARED_DIR,
+                type="volume",
+            ),
+        ],
+        working_dir="/app",
+        auto_remove=True,
+        mount_tmp_dir=False,
+        force_pull=False,
+    )
+    decision = compare_candidate_to_production(prepared)
     applied = apply_promotion_decision(decision)
-    ready >> prepared
+    ready >> prepared >> train_candidate_model_task >> decision
     applied >> reload_model_if_promoted(applied) >> validate_inference_health()
 
 

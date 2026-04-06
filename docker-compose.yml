@@ -1,3 +1,7 @@
+networks:
+  default:
+    name: mlops_network
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -69,10 +73,13 @@ services:
       FEATURE_STATS_URI: ${FEATURE_STATS_URI}
       MODEL_INFO_URI: ${MODEL_INFO_URI}
       MODEL_REGISTRY_URI: ${MODEL_REGISTRY_URI}
+      AIRFLOW_SHARED_DIR: /opt/airflow/shared
+      AIRFLOW_SHARED_VOLUME: t25--4m_mlops_airflow_shared
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - airflow_logs:/opt/airflow/logs
       - ./:/opt/project
+      - airflow_shared:/opt/airflow/shared
     command:
       - bash
       - -c
@@ -120,10 +127,13 @@ services:
       FEATURE_STATS_URI: ${FEATURE_STATS_URI}
       MODEL_INFO_URI: ${MODEL_INFO_URI}
       MODEL_REGISTRY_URI: ${MODEL_REGISTRY_URI}
+      AIRFLOW_SHARED_DIR: /opt/airflow/shared
+      AIRFLOW_SHARED_VOLUME: t25--4m_mlops_airflow_shared
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - airflow_logs:/opt/airflow/logs
       - ./:/opt/project
+      - airflow_shared:/opt/airflow/shared
     ports:
       - "8080:8080"
     command:
@@ -134,6 +144,7 @@ services:
       context: .
       dockerfile: airflow/Dockerfile
     container_name: airflow-scheduler
+    user: root
     depends_on:
       airflow-init:
         condition: service_completed_successfully
@@ -161,14 +172,21 @@ services:
       FEATURE_STATS_URI: ${FEATURE_STATS_URI}
       MODEL_INFO_URI: ${MODEL_INFO_URI}
       MODEL_REGISTRY_URI: ${MODEL_REGISTRY_URI}
+      AIRFLOW_TRAIN_IMAGE: ${INFERENCE_SERVICE_IMAGE:-mlops/inference-service:latest}
+      AIRFLOW_DOCKER_NETWORK: mlops_network
+      AIRFLOW_SHARED_DIR: /opt/airflow/shared
+      AIRFLOW_SHARED_VOLUME: t25--4m_mlops_airflow_shared
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - airflow_logs:/opt/airflow/logs
       - ./:/opt/project
+      - airflow_shared:/opt/airflow/shared
+      - /var/run/docker.sock:/var/run/docker.sock
     command:
       - scheduler
 
   inference-service:
+    image: ${INFERENCE_SERVICE_IMAGE:-mlops/inference-service:latest}
     build:
       context: .
       dockerfile: services/inference-service/Dockerfile
@@ -189,6 +207,7 @@ services:
         condition: service_completed_successfully
 
   artifact-trainer:
+    image: ${INFERENCE_SERVICE_IMAGE:-mlops/inference-service:latest}
     build:
       context: .
       dockerfile: services/inference-service/Dockerfile
@@ -257,3 +276,4 @@ volumes:
   postgres_data:
   minio_data:
   airflow_logs:
+  airflow_shared:

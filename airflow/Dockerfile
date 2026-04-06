@@ -12,4 +12,5 @@ USER airflow
 COPY services/inference-service/requirements.txt /tmp/inference-requirements.txt
 
 RUN pip install --no-cache-dir psycopg2-binary==2.9.10 \
-    && pip install --no-cache-dir -r /tmp/inference-requirements.txt
+    && pip install --no-cache-dir -r /tmp/inference-requirements.txt \
+    && pip install --no-cache-dir "apache-airflow-providers-docker==3.12.0"
