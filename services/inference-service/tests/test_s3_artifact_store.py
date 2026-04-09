@@ -55,6 +55,14 @@ class FakeS3Client:
         self.objects.pop((bucket, key), None)
 
 
+class RecordingPutClient:
+    def __init__(self) -> None:
+        self.last_put_kwargs: dict[str, object] | None = None
+
+    def put_object(self, **kwargs) -> None:
+        self.last_put_kwargs = kwargs
+
+
 def test_parse_s3_uri() -> None:
     bucket, key = parse_s3_uri("s3://ml-artifacts/models/production/model.joblib")
     assert bucket == "ml-artifacts"
@@ -119,3 +127,32 @@ def test_s3_artifact_store_load_json_requires_object(monkeypatch) -> None:
         assert False, "ValueError was expected"
     except ValueError as exc:
         assert "must contain an object" in str(exc)
+
+
+def test_upload_bytes_applies_sse_aes256() -> None:
+    artifact_store = S3ArtifactStore(sse_mode="AES256")
+    fake_client = RecordingPutClient()
+    artifact_store._client = fake_client  # pylint: disable=protected-access
+    artifact_store.ensure_bucket = lambda _bucket: None
+
+    artifact_store.upload_bytes("s3://ml-artifacts/models/model.joblib", b"binary")
+
+    assert fake_client.last_put_kwargs is not None
+    assert fake_client.last_put_kwargs["ServerSideEncryption"] == "AES256"
+    assert "SSEKMSKeyId" not in fake_client.last_put_kwargs
+
+
+def test_upload_bytes_applies_sse_kms_key() -> None:
+    artifact_store = S3ArtifactStore(
+        sse_mode="aws:kms",
+        sse_kms_key_id="datasets-key",
+    )
+    fake_client = RecordingPutClient()
+    artifact_store._client = fake_client  # pylint: disable=protected-access
+    artifact_store.ensure_bucket = lambda _bucket: None
+
+    artifact_store.upload_bytes("s3://ml-artifacts/models/model.joblib", b"binary")
+
+    assert fake_client.last_put_kwargs is not None
+    assert fake_client.last_put_kwargs["ServerSideEncryption"] == "aws:kms"
+    assert fake_client.last_put_kwargs["SSEKMSKeyId"] == "datasets-key"

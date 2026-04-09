@@ -1,0 +1,62 @@
+executor: KubernetesExecutor
+
+airflowVersion: "2.10.3"
+
+images:
+  airflow:
+    repository: mlops/airflow
+    tag: latest
+    pullPolicy: IfNotPresent
+
+env:
+  - name: AIRFLOW__CORE__LOAD_EXAMPLES
+    value: "False"
+  - name: AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION
+    value: "False"
+  - name: AIRFLOW_INFERENCE_BASE_URL
+    value: "http://inference-service.mlops-app.svc.cluster.local:8001"
+  - name: AIRFLOW_K8S_NAMESPACE
+    value: "mlops-app"
+  - name: AIRFLOW_K8S_SERVICE_ACCOUNT
+    value: "airflow-runner"
+  - name: S3_SSE_MODE
+    value: "aws:kms"
+  - name: S3_SSE_KMS_KEY_ID
+    value: "models-key"
+
+extraEnvFrom:
+  - configMapRef:
+      name: mlops-shared-config
+  - secretRef:
+      name: mlops-app-secrets
+
+webserver:
+  defaultUser:
+    enabled: true
+    role: Admin
+    username: admin
+    email: admin@example.com
+    firstName: Airflow
+    lastName: Admin
+    password: change-me
+
+serviceAccount:
+  create: true
+  name: airflow-runner
+
+rbac:
+  create: true
+
+dags:
+  persistence:
+    enabled: false
+  gitSync:
+    enabled: false
+
+extraPipPackages:
+  - apache-airflow-providers-cncf-kubernetes
+  - boto3
+  - pandas
+  - scikit-learn
+  - lightgbm
+  - joblib

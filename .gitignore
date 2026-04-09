@@ -8,3 +8,4 @@ __pycache__/
 .private-docs/
 scripts/
 SERVICE_FILES.md
+k8s/README.md

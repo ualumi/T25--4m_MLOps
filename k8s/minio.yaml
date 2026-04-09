@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: minio
+  namespace: mlops-data
+spec:
+  serviceName: minio
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio:latest
+          args:
+            - server
+            - /data
+            - --console-address
+            - :9001
+          ports:
+            - containerPort: 9000
+              name: s3
+            - containerPort: 9001
+              name: console
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mlops-app-secrets
+                  key: MINIO_ROOT_USER
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mlops-app-secrets
+                  key: MINIO_ROOT_PASSWORD
+            - name: MINIO_KMS_KES_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: minio-kes-secrets
+                  key: MINIO_KMS_KES_ENDPOINT
+            - name: MINIO_KMS_KES_KEY_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: minio-kes-secrets
+                  key: MINIO_KMS_KES_KEY_NAME
+            - name: MINIO_KMS_KES_CERT_FILE
+              valueFrom:
+                secretKeyRef:
+                  name: minio-kes-secrets
+                  key: MINIO_KMS_KES_CERT_FILE
+            - name: MINIO_KMS_KES_KEY_FILE
+              valueFrom:
+                secretKeyRef:
+                  name: minio-kes-secrets
+                  key: MINIO_KMS_KES_KEY_FILE
+            - name: MINIO_KMS_KES_CAPATH
+              valueFrom:
+                secretKeyRef:
+                  name: minio-kes-secrets
+                  key: MINIO_KMS_KES_CAPATH
+          volumeMounts:
+            - name: minio-data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: minio-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 100Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: mlops-data
+spec:
+  selector:
+    app: minio
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: s3
+    - name: console
+      port: 9001
+      targetPort: console

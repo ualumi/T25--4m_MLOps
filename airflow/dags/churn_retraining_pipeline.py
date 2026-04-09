@@ -10,7 +10,7 @@ from urllib.request import Request, urlopen
 
 from airflow.decorators import dag, task
 from airflow.operators.python import get_current_context
-from airflow.providers.docker.operators.docker import DockerOperator
+from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
 
 PROJECT_ROOT = Path("/opt/project")
 INFERENCE_SERVICE_ROOT = PROJECT_ROOT / "services" / "inference-service"
@@ -28,8 +28,8 @@ AIRFLOW_TRAIN_IMAGE = os.getenv(
     "AIRFLOW_TRAIN_IMAGE",
     os.getenv("INFERENCE_SERVICE_IMAGE", "mlops/inference-service:latest"),
 )
-AIRFLOW_DOCKER_NETWORK = os.getenv("AIRFLOW_DOCKER_NETWORK", "mlops_network")
-AIRFLOW_DOCKER_HOST = os.getenv("AIRFLOW_DOCKER_HOST", "unix://var/run/docker.sock")
+AIRFLOW_K8S_NAMESPACE = os.getenv("AIRFLOW_K8S_NAMESPACE", "mlops-app")
+AIRFLOW_K8S_SERVICE_ACCOUNT = os.getenv("AIRFLOW_K8S_SERVICE_ACCOUNT", "airflow-runner")
 MODEL_REGISTRY_URI = os.getenv("MODEL_REGISTRY_URI", DEFAULT_MODEL_REGISTRY_URI)
 
 default_args = {
@@ -46,6 +46,8 @@ def _artifact_store() -> S3ArtifactStore:
         access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
         secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
         region=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
+        sse_mode=os.getenv("S3_SSE_MODE"),
+        sse_kms_key_id=os.getenv("S3_SSE_KMS_KEY_ID"),
     )
 
 
@@ -90,6 +92,8 @@ def _train_environment() -> dict[str, str]:
         "AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY",
         "AWS_DEFAULT_REGION",
+        "S3_SSE_MODE",
+        "S3_SSE_KMS_KEY_ID",
         "MODEL_URI",
         "BASELINE_MODEL_URI",
         "REPORT_URI",
@@ -183,19 +187,19 @@ def churn_retraining_pipeline():
 
     ready = wait_for_inference()
     prepared = prepare_retraining_run()
-    train_task = DockerOperator(
+    train_task = KubernetesPodOperator(
         task_id="train_model",
+        name="train-model",
         image=AIRFLOW_TRAIN_IMAGE,
-        entrypoint=["python"],
-        command=["-c", _train_command_template()],
-        docker_url=AIRFLOW_DOCKER_HOST,
-        network_mode=AIRFLOW_DOCKER_NETWORK,
-        environment=_train_environment(),
-        working_dir="/app",
-        auto_remove="success",
-        mount_tmp_dir=False,
-        force_pull=False,
-        do_xcom_push=True,
+        cmds=["python"],
+        arguments=["-c", _train_command_template()],
+        namespace=AIRFLOW_K8S_NAMESPACE,
+        service_account_name=AIRFLOW_K8S_SERVICE_ACCOUNT,
+        env_vars=_train_environment(),
+        in_cluster=True,
+        get_logs=True,
+        is_delete_operator_pod=True,
+        do_xcom_push=False,
     )
 
     ready >> prepared >> train_task

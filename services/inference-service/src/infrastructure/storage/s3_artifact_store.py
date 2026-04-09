@@ -26,6 +26,8 @@ class S3ArtifactStore:
         access_key_id: str | None = None,
         secret_access_key: str | None = None,
         region: str = "us-east-1",
+        sse_mode: str | None = None,
+        sse_kms_key_id: str | None = None,
     ) -> None:
         self._client = boto3.client(
             "s3",
@@ -35,6 +37,8 @@ class S3ArtifactStore:
             region_name=region,
         )
         self._region = region
+        self._sse_mode = (sse_mode or "").strip() or None
+        self._sse_kms_key_id = (sse_kms_key_id or "").strip() or None
 
     def ensure_bucket(self, bucket: str) -> None:
         try:
@@ -76,12 +80,33 @@ class S3ArtifactStore:
     ) -> None:
         bucket, key = parse_s3_uri(uri)
         self.ensure_bucket(bucket)
-        self._client.put_object(
-            Bucket=bucket,
-            Key=key,
-            Body=data,
-            ContentType=content_type,
+        put_kwargs = self._build_put_kwargs(
+            bucket=bucket,
+            key=key,
+            data=data,
+            content_type=content_type,
         )
+        self._client.put_object(**put_kwargs)
+
+    def _build_put_kwargs(
+        self,
+        *,
+        bucket: str,
+        key: str,
+        data: bytes,
+        content_type: str,
+    ) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {
+            "Bucket": bucket,
+            "Key": key,
+            "Body": data,
+            "ContentType": content_type,
+        }
+        if self._sse_mode:
+            kwargs["ServerSideEncryption"] = self._sse_mode
+        if self._sse_mode == "aws:kms" and self._sse_kms_key_id:
+            kwargs["SSEKMSKeyId"] = self._sse_kms_key_id
+        return kwargs
 
     def list_uris(self, bucket: str, prefix: str) -> list[str]:
         normalized_prefix = prefix.strip("/")

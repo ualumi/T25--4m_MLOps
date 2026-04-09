@@ -49,6 +49,27 @@ from src.interfaces.api.schemas import (  # noqa: E402
 app = FastAPI(title="Gateway Service", version="1.0.0")
 
 
+def _validate_upload_encryption_config() -> None:
+    config = get_gateway_config()
+    if not config.require_upload_encryption:
+        return
+
+    mode = (config.s3_sse_mode or "").strip()
+    if mode not in {"AES256", "aws:kms"}:
+        raise RuntimeError(
+            "Upload encryption is required. Set S3_SSE_MODE to AES256 or aws:kms."
+        )
+    if mode == "aws:kms" and not (config.s3_sse_kms_key_id or "").strip():
+        raise RuntimeError(
+            "Upload encryption is required. Set S3_SSE_KMS_KEY_ID for aws:kms mode."
+        )
+
+
+@app.on_event("startup")
+def _validate_encryption_config_on_startup() -> None:
+    _validate_upload_encryption_config()
+
+
 @lru_cache(maxsize=1)
 def get_session_store() -> PostgresSessionStore:
     config = get_gateway_config()
@@ -71,6 +92,7 @@ def get_predict_use_case() -> RequestPredictionUseCase:
 
 @lru_cache(maxsize=1)
 def get_dataset_store() -> S3DatasetStore:
+    _validate_upload_encryption_config()
     config = get_gateway_config()
     return S3DatasetStore(
         bucket=config.dataset_upload_bucket,
@@ -79,11 +101,14 @@ def get_dataset_store() -> S3DatasetStore:
         access_key_id=config.s3_access_key_id,
         secret_access_key=config.s3_secret_access_key,
         region=config.s3_region,
+        sse_mode=config.s3_sse_mode,
+        sse_kms_key_id=config.s3_sse_kms_key_id,
     )
 
 
 @lru_cache(maxsize=1)
 def get_retraining_dataset_store() -> S3DatasetStore:
+    _validate_upload_encryption_config()
     config = get_gateway_config()
     return S3DatasetStore(
         bucket=config.retrain_source_bucket,
@@ -92,6 +117,8 @@ def get_retraining_dataset_store() -> S3DatasetStore:
         access_key_id=config.s3_access_key_id,
         secret_access_key=config.s3_secret_access_key,
         region=config.s3_region,
+        sse_mode=config.s3_sse_mode,
+        sse_kms_key_id=config.s3_sse_kms_key_id,
     )
 
 
@@ -105,6 +132,8 @@ def get_prediction_result_store() -> S3DatasetStore:
         access_key_id=config.s3_access_key_id,
         secret_access_key=config.s3_secret_access_key,
         region=config.s3_region,
+        sse_mode=config.s3_sse_mode,
+        sse_kms_key_id=config.s3_sse_kms_key_id,
     )
 
 
@@ -118,6 +147,8 @@ def get_segment_result_store() -> S3DatasetStore:
         access_key_id=config.s3_access_key_id,
         secret_access_key=config.s3_secret_access_key,
         region=config.s3_region,
+        sse_mode=config.s3_sse_mode,
+        sse_kms_key_id=config.s3_sse_kms_key_id,
     )
 
 
@@ -128,6 +159,7 @@ def _save_prediction_result(
     result_kind: str,
     endpoint: str,
     record_count: int,
+    dataset_encryption: Mapping[str, object] | None = None,
 ) -> str:
     result_store = getattr(app.state, "prediction_result_store", None) or (
         get_prediction_result_store()
@@ -140,6 +172,7 @@ def _save_prediction_result(
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "endpoint": endpoint,
                 "record_count": record_count,
+                "dataset_encryption": dataset_encryption or {},
             },
             "request": request_payload,
             "response": response_payload,
@@ -214,6 +247,7 @@ def _run_batch_prediction(
     payload: BatchPredictRequest,
     dataset_uri: str | None = None,
     result_kind: str = "batch",
+    dataset_encryption: Mapping[str, object] | None = None,
 ) -> BatchPredictResponse:
     use_case = getattr(app.state, "predict_use_case", None) or get_predict_use_case()
     try:
@@ -248,6 +282,7 @@ def _run_batch_prediction(
         result_kind=result_kind,
         endpoint="/predict/upload" if result_kind == "uploads" else "/predict/batch",
         record_count=len(payload.clients),
+        dataset_encryption=dataset_encryption,
     )
     return BatchPredictResponse(
         predictions=predictions,
@@ -445,7 +480,11 @@ def _validate_training_csv(raw_content: bytes) -> int:
 
 @app.post("/predict/batch", response_model=BatchPredictResponse)
 def predict_batch(payload: BatchPredictRequest) -> BatchPredictResponse:
-    return _run_batch_prediction(payload, result_kind="batch")
+    return _run_batch_prediction(
+        payload,
+        result_kind="batch",
+        dataset_encryption={"enabled": False},
+    )
 
 
 @app.post("/predict/upload", response_model=BatchPredictResponse)
@@ -474,6 +513,11 @@ async def predict_upload(
         payload,
         dataset_uri=dataset_uri,
         result_kind="uploads",
+        dataset_encryption={
+            "enabled": bool(get_gateway_config().s3_sse_mode),
+            "mode": get_gateway_config().s3_sse_mode,
+            "kms_key_id": get_gateway_config().s3_sse_kms_key_id,
+        },
     )
 
 
@@ -510,4 +554,9 @@ async def upload_training_dataset(
         "dataset_uri": dataset_uri,
         "record_count": record_count,
         "status": "uploaded",
+        "dataset_encryption": {
+            "enabled": bool(get_gateway_config().s3_sse_mode),
+            "mode": get_gateway_config().s3_sse_mode,
+            "kms_key_id": get_gateway_config().s3_sse_kms_key_id,
+        },
     }

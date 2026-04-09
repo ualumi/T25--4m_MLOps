@@ -1,10 +1,13 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 API_PATH = Path(__file__).resolve().parents[1] / "src" / "api.py"
+os.environ.setdefault("S3_SSE_MODE", "AES256")
+os.environ.setdefault("REQUIRE_UPLOAD_ENCRYPTION", "true")
 SPEC = importlib.util.spec_from_file_location("gateway_test_api_module", API_PATH)
 assert SPEC is not None and SPEC.loader is not None
 GATEWAY_API = importlib.util.module_from_spec(SPEC)
@@ -152,6 +155,7 @@ def test_connect_and_predict() -> None:
     metadata = app.state.prediction_result_store.saved[0]["payload"]["metadata"]
     assert metadata["endpoint"] == "/predict"
     assert metadata["record_count"] == 1
+    assert metadata["dataset_encryption"] == {}
     assert metadata["created_at"]
 
     del app.state.connect_use_case
@@ -189,6 +193,7 @@ def test_predict_batch() -> None:
     metadata = app.state.prediction_result_store.saved[0]["payload"]["metadata"]
     assert metadata["endpoint"] == "/predict/batch"
     assert metadata["record_count"] == 2
+    assert metadata["dataset_encryption"] == {"enabled": False}
 
     del app.state.predict_use_case
     del app.state.prediction_result_store
@@ -257,6 +262,8 @@ def test_predict_upload_json() -> None:
     metadata = app.state.prediction_result_store.saved[0]["payload"]["metadata"]
     assert metadata["endpoint"] == "/predict/upload"
     assert metadata["record_count"] == 2
+    assert metadata["dataset_encryption"]["enabled"] is True
+    assert metadata["dataset_encryption"]["mode"] == "AES256"
 
     del app.state.predict_use_case
     del app.state.dataset_store
@@ -302,6 +309,8 @@ def test_predict_upload_csv() -> None:
     metadata = app.state.prediction_result_store.saved[0]["payload"]["metadata"]
     assert metadata["endpoint"] == "/predict/upload"
     assert metadata["record_count"] == 2
+    assert metadata["dataset_encryption"]["enabled"] is True
+    assert metadata["dataset_encryption"]["mode"] == "AES256"
 
     del app.state.predict_use_case
     del app.state.dataset_store
@@ -385,6 +394,8 @@ def test_upload_training_dataset() -> None:
         body["dataset_uri"]
         == "s3://ml-artifacts/training/uploads/u-1/training/training.csv"
     )
+    assert body["dataset_encryption"]["enabled"] is True
+    assert body["dataset_encryption"]["mode"] == "AES256"
     assert app.state.retraining_dataset_store.saved[0]["subfolder"] == "training"
 
     del app.state.session_store

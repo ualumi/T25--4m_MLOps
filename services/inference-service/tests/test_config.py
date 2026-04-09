@@ -8,6 +8,8 @@ def test_inference_config_from_env(monkeypatch) -> None:
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "key")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "secret")
     monkeypatch.setenv("AWS_DEFAULT_REGION", "eu-central-1")
+    monkeypatch.setenv("S3_SSE_MODE", "AES256")
+    monkeypatch.setenv("S3_SSE_KMS_KEY_ID", "datasets-key")
     monkeypatch.setenv("SEGMENT_RESULTS_BUCKET", "ml-segments")
     monkeypatch.setenv("SEGMENT_RESULTS_PREFIX", "ranked-users")
 
@@ -19,5 +21,7 @@ def test_inference_config_from_env(monkeypatch) -> None:
     assert config.s3_access_key_id == "key"
     assert config.s3_secret_access_key == "secret"
     assert config.s3_region == "eu-central-1"
+    assert config.s3_sse_mode == "AES256"
+    assert config.s3_sse_kms_key_id == "datasets-key"
     assert config.segment_results_bucket == "ml-segments"
     assert config.segment_results_prefix == "ranked-users"

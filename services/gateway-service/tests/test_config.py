@@ -9,6 +9,9 @@ def test_gateway_config_from_env(monkeypatch) -> None:
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "minioadmin")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "secret")
     monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
+    monkeypatch.setenv("S3_SSE_MODE", "aws:kms")
+    monkeypatch.setenv("S3_SSE_KMS_KEY_ID", "datasets-key")
+    monkeypatch.setenv("REQUIRE_UPLOAD_ENCRYPTION", "true")
     monkeypatch.setenv("DATASET_UPLOADS_BUCKET", "user-datasets")
     monkeypatch.setenv("DATASET_UPLOADS_PREFIX", "incoming")
     monkeypatch.setenv("PREDICTION_RESULTS_BUCKET", "prediction-results")
@@ -30,6 +33,9 @@ def test_gateway_config_from_env(monkeypatch) -> None:
     assert config.s3_access_key_id == "minioadmin"
     assert config.s3_secret_access_key == "secret"
     assert config.s3_region == "us-east-1"
+    assert config.s3_sse_mode == "aws:kms"
+    assert config.s3_sse_kms_key_id == "datasets-key"
+    assert config.require_upload_encryption is True
     assert config.dataset_upload_bucket == "user-datasets"
     assert config.dataset_upload_prefix == "incoming"
     assert config.prediction_results_bucket == "prediction-results"

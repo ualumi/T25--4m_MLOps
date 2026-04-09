@@ -21,10 +21,14 @@ class S3DatasetStore:
         access_key_id: str | None = None,
         secret_access_key: str | None = None,
         region: str = "us-east-1",
+        sse_mode: str | None = None,
+        sse_kms_key_id: str | None = None,
     ) -> None:
         self._bucket = bucket
         self._prefix = prefix.strip("/")
         self._region = region
+        self._sse_mode = (sse_mode or "").strip() or None
+        self._sse_kms_key_id = (sse_kms_key_id or "").strip() or None
         self._client = boto3.client(
             "s3",
             endpoint_url=endpoint_url,
@@ -93,13 +97,32 @@ class S3DatasetStore:
     ) -> str:
         self.ensure_bucket()
         key = self._build_key(user_id=user_id, filename=filename, subfolder=subfolder)
-        self._client.put_object(
-            Bucket=self._bucket,
-            Key=key,
-            Body=data,
-            ContentType=content_type,
+        put_kwargs = self._build_put_kwargs(
+            key=key,
+            data=data,
+            content_type=content_type,
         )
+        self._client.put_object(**put_kwargs)
         return f"s3://{self._bucket}/{key}"
+
+    def _build_put_kwargs(
+        self,
+        *,
+        key: str,
+        data: bytes,
+        content_type: str,
+    ) -> dict[str, object]:
+        kwargs: dict[str, object] = {
+            "Bucket": self._bucket,
+            "Key": key,
+            "Body": data,
+            "ContentType": content_type,
+        }
+        if self._sse_mode:
+            kwargs["ServerSideEncryption"] = self._sse_mode
+        if self._sse_mode == "aws:kms" and self._sse_kms_key_id:
+            kwargs["SSEKMSKeyId"] = self._sse_kms_key_id
+        return kwargs
 
     def _build_key(
         self,

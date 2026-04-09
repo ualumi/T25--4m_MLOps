@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 USER airflow
 RUN pip install --no-cache-dir \
     apache-airflow-providers-docker \
+    apache-airflow-providers-cncf-kubernetes \
     boto3 \
     pandas \
     scikit-learn \

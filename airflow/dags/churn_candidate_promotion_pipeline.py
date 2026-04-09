@@ -12,8 +12,7 @@ from urllib.request import Request, urlopen
 import pandas as pd
 from airflow.decorators import dag, task
 from airflow.operators.python import get_current_context
-from airflow.providers.docker.operators.docker import DockerOperator
-from docker.types import Mount
+from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
 
 PROJECT_ROOT = Path("/opt/project")
 INFERENCE_SERVICE_ROOT = PROJECT_ROOT / "services" / "inference-service"
@@ -47,10 +46,8 @@ AIRFLOW_TRAIN_IMAGE = os.getenv(
     "AIRFLOW_TRAIN_IMAGE",
     os.getenv("INFERENCE_SERVICE_IMAGE", "mlops/inference-service:latest"),
 )
-AIRFLOW_DOCKER_NETWORK = os.getenv("AIRFLOW_DOCKER_NETWORK", "mlops_network")
-AIRFLOW_DOCKER_HOST = os.getenv("AIRFLOW_DOCKER_HOST", "unix://var/run/docker.sock")
-AIRFLOW_SHARED_VOLUME = os.getenv("AIRFLOW_SHARED_VOLUME", "airflow_shared")
-AIRFLOW_SHARED_DIR = os.getenv("AIRFLOW_SHARED_DIR", "/opt/airflow/shared")
+AIRFLOW_K8S_NAMESPACE = os.getenv("AIRFLOW_K8S_NAMESPACE", "mlops-app")
+AIRFLOW_K8S_SERVICE_ACCOUNT = os.getenv("AIRFLOW_K8S_SERVICE_ACCOUNT", "airflow-runner")
 SOURCE_DATASETS_BUCKET = os.getenv("RETRAIN_SOURCE_DATASETS_BUCKET", "ml-artifacts")
 SOURCE_DATASETS_PREFIX = os.getenv("RETRAIN_SOURCE_DATASETS_PREFIX", DEFAULT_RETRAIN_SOURCE_PREFIX)
 NON_PROMOTED_PREFIX = os.getenv("RETRAIN_NON_PROMOTED_PREFIX", DEFAULT_RETRAIN_NON_PROMOTED_PREFIX)
@@ -79,6 +76,8 @@ def _artifact_store() -> S3ArtifactStore:
         access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
         secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
         region=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
+        sse_mode=os.getenv("S3_SSE_MODE"),
+        sse_kms_key_id=os.getenv("S3_SSE_KMS_KEY_ID"),
     )
 
 
@@ -189,21 +188,58 @@ def _non_promoted_destination_uri(source_uri: str, version: str) -> str:
     return f"s3://{bucket}/{NON_PROMOTED_PREFIX.strip('/')}/{version}/{Path(key).name}"
 
 
+def _candidate_train_uri(version: str) -> str:
+    bucket, key = parse_s3_uri(MODEL_REGISTRY_URI)
+    prefix = str(Path(key).parent).replace("\\", "/").strip("/")
+    if prefix == ".":
+        return f"s3://{bucket}/runs/{version}/candidate-train.csv"
+    return f"s3://{bucket}/{prefix}/runs/{version}/candidate-train.csv"
+
+
+def _train_environment() -> dict[str, str]:
+    keys = (
+        "S3_ENDPOINT_URL",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_DEFAULT_REGION",
+        "S3_SSE_MODE",
+        "S3_SSE_KMS_KEY_ID",
+    )
+    return {k: v for k in keys if (v := os.getenv(k)) is not None}
+
+
 def _train_command_template() -> str:
     return f"""
 import json
+import os
 import sys
+import tempfile
 
+from src.infrastructure.storage.s3_artifact_store import S3ArtifactStore
 from src.training.train import main
 
 payload = json.loads(r'''{{{{ ti.xcom_pull(task_ids='prepare_candidate_dataset') | tojson }}}}''')
 if payload.get("noop"):
     print(f"Пропуск запуска (no-op): {{payload.get('noop_reason', '')}}")
 else:
+    train_path = payload["candidate_train_path"]
+    if train_path.startswith("s3://"):
+        store = S3ArtifactStore(
+            endpoint_url=os.getenv("S3_ENDPOINT_URL"),
+            access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+            secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+            region=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
+            sse_mode=os.getenv("S3_SSE_MODE"),
+            sse_kms_key_id=os.getenv("S3_SSE_KMS_KEY_ID"),
+        )
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".csv", delete=False) as file_obj:
+            file_obj.write(store.download_bytes(train_path))
+            train_path = file_obj.name
+
     args = [
         "train",
         "--train-path",
-        payload["candidate_train_path"],
+        train_path,
         "--test-path",
         "/app/data/test_data.csv",
         "--production-model-uri",
@@ -303,15 +339,15 @@ def churn_candidate_promotion_pipeline():
         if len(set(merged[TARGET_COLUMN].astype(int).tolist())) < 2:
             return _noop(version, "Объединенный датасет не содержит оба класса.", invalid_uris)
 
-        candidate_train_path = Path(AIRFLOW_SHARED_DIR) / f"candidate-train-{version}.csv"
-        candidate_train_path.parent.mkdir(parents=True, exist_ok=True)
-        merged.to_csv(candidate_train_path, index=False)
+        candidate_train_uri = _candidate_train_uri(version)
+        payload = merged.to_csv(index=False).encode("utf-8")
+        store.upload_bytes(candidate_train_uri, payload, content_type="text/csv")
 
         return {
             "noop": False,
             "noop_reason": "",
             "version": version,
-            "candidate_train_path": str(candidate_train_path),
+            "candidate_train_path": candidate_train_uri,
             "source_dataset_uris": sorted(set(valid_uris)),
             "invalid_dataset_uris": sorted(set(invalid_uris)),
             "artifact_uris": _artifact_uris(version),
@@ -397,25 +433,19 @@ def churn_candidate_promotion_pipeline():
 
     ready = wait_for_inference()
     prepared = prepare_candidate_dataset()
-    train_task = DockerOperator(
+    train_task = KubernetesPodOperator(
         task_id="train_candidate_model",
+        name="train-candidate-model",
         image=AIRFLOW_TRAIN_IMAGE,
-        entrypoint=["python"],
-        command=["-c", _train_command_template()],
-        docker_url=AIRFLOW_DOCKER_HOST,
-        network_mode=AIRFLOW_DOCKER_NETWORK,
-        environment={
-            "S3_ENDPOINT_URL": os.getenv("S3_ENDPOINT_URL", ""),
-            "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID", ""),
-            "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY", ""),
-            "AWS_DEFAULT_REGION": os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
-        },
-        mounts=[Mount(source=AIRFLOW_SHARED_VOLUME, target=AIRFLOW_SHARED_DIR, type="volume")],
-        working_dir="/app",
-        auto_remove="success",
-        mount_tmp_dir=False,
-        force_pull=False,
-        do_xcom_push=True,
+        cmds=["python"],
+        arguments=["-c", _train_command_template()],
+        namespace=AIRFLOW_K8S_NAMESPACE,
+        service_account_name=AIRFLOW_K8S_SERVICE_ACCOUNT,
+        env_vars=_train_environment(),
+        in_cluster=True,
+        get_logs=True,
+        is_delete_operator_pod=True,
+        do_xcom_push=False,
     )
     trained = after_training(prepared, train_task.output)
     decision = compare_candidate_to_production(trained)

@@ -61,6 +61,8 @@ def build_artifact_store() -> S3ArtifactStore:
         access_key_id=config.s3_access_key_id,
         secret_access_key=config.s3_secret_access_key,
         region=config.s3_region,
+        sse_mode=config.s3_sse_mode,
+        sse_kms_key_id=config.s3_sse_kms_key_id,
     )
 
 

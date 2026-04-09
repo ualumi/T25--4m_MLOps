@@ -48,6 +48,8 @@ def build_artifact_store() -> S3ArtifactStore:
         access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
         secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
         region=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
+        sse_mode=os.getenv("S3_SSE_MODE"),
+        sse_kms_key_id=os.getenv("S3_SSE_KMS_KEY_ID"),
     )
 
 

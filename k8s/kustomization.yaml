@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secrets.template.yaml
+  - pvc.yaml
+  - ingress.yaml
+  - gateway.yaml
+  - inference.yaml
+  - postgres.yaml
+  - minio.yaml
+  - rbac.yaml
+  - network-policies.yaml

@@ -34,6 +34,18 @@ def _float_env(name: str, default: float) -> float:
         raise ValueError(f"Environment variable {name} must be a float.") from exc
 
 
+def _bool_env(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    normalized = raw.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"Environment variable {name} must be a boolean value.")
+
+
 @dataclass(frozen=True)
 # pylint: disable=too-many-instance-attributes
 class GatewayConfig:
@@ -46,6 +58,9 @@ class GatewayConfig:
     s3_access_key_id: str | None
     s3_secret_access_key: str | None
     s3_region: str
+    s3_sse_mode: str | None
+    s3_sse_kms_key_id: str | None
+    require_upload_encryption: bool
     dataset_upload_bucket: str
     dataset_upload_prefix: str
     retrain_source_bucket: str
@@ -65,6 +80,8 @@ class InferenceConfig:
     s3_access_key_id: str | None
     s3_secret_access_key: str | None
     s3_region: str
+    s3_sse_mode: str | None
+    s3_sse_kms_key_id: str | None
     segment_results_bucket: str
     segment_results_prefix: str
 
@@ -85,6 +102,9 @@ def get_gateway_config() -> GatewayConfig:
         s3_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
         s3_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
         s3_region=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
+        s3_sse_mode=os.getenv("S3_SSE_MODE"),
+        s3_sse_kms_key_id=os.getenv("S3_SSE_KMS_KEY_ID"),
+        require_upload_encryption=_bool_env("REQUIRE_UPLOAD_ENCRYPTION", True),
         dataset_upload_bucket=os.getenv("DATASET_UPLOADS_BUCKET", "ml-artifacts"),
         dataset_upload_prefix=os.getenv(
             "DATASET_UPLOADS_PREFIX", DEFAULT_DATASET_UPLOAD_PREFIX
@@ -117,6 +137,8 @@ def get_inference_config() -> InferenceConfig:
         s3_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
         s3_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
         s3_region=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
+        s3_sse_mode=os.getenv("S3_SSE_MODE"),
+        s3_sse_kms_key_id=os.getenv("S3_SSE_KMS_KEY_ID"),
         segment_results_bucket=os.getenv("SEGMENT_RESULTS_BUCKET", "ml-artifacts"),
         segment_results_prefix=os.getenv(
             "SEGMENT_RESULTS_PREFIX", DEFAULT_SEGMENT_RESULTS_PREFIX

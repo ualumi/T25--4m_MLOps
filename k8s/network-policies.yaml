@@ -1,0 +1,43 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: minio-ingress-restricted
+  namespace: mlops-data
+spec:
+  podSelector:
+    matchLabels:
+      app: minio
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: mlops-app
+          podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - gateway-service
+                  - inference-service
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: mlops-app
+          podSelector:
+            matchLabels:
+              component: airflow
+      ports:
+        - protocol: TCP
+          port: 9000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all-by-default
+  namespace: mlops-app
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
