@@ -13,6 +13,8 @@ from botocore.exceptions import ClientError
 
 
 class S3DatasetStore:
+    # Constructor includes connection and SSE config options by design.
+    # pylint: disable=too-many-arguments
     def __init__(
         self,
         bucket: str,
