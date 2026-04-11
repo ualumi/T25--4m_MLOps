@@ -1,3 +1,5 @@
+# Полный стек в Docker: Postgres, MinIO, gateway, inference, Airflow (LocalExecutor + DockerOperator для train).
+
 networks:
   default:
     name: mlops_network
@@ -61,8 +63,6 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
-      S3_SSE_MODE: ${S3_SSE_MODE:-AES256}
-      S3_SSE_KMS_KEY_ID: ${S3_SSE_KMS_KEY_ID:-}
       REQUIRE_UPLOAD_ENCRYPTION: ${REQUIRE_UPLOAD_ENCRYPTION:-true}
       DATASET_UPLOADS_BUCKET: ${DATASET_UPLOADS_BUCKET:-ml-artifacts}
       DATASET_UPLOADS_PREFIX: ${DATASET_UPLOADS_PREFIX:-inference/uploads}
@@ -78,6 +78,8 @@ services:
       MODEL_REGISTRY_URI: ${MODEL_REGISTRY_URI}
       AIRFLOW_SHARED_DIR: /opt/airflow/shared
       AIRFLOW_SHARED_VOLUME: t25--4m_mlops_airflow_shared
+      AIRFLOW_DOCKER_NETWORK: mlops_network
+      AIRFLOW_TRAIN_IMAGE: ${INFERENCE_SERVICE_IMAGE:-mlops/inference-service:latest}
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - airflow_logs:/opt/airflow/logs
@@ -118,8 +120,6 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
-      S3_SSE_MODE: ${S3_SSE_MODE:-AES256}
-      S3_SSE_KMS_KEY_ID: ${S3_SSE_KMS_KEY_ID:-}
       REQUIRE_UPLOAD_ENCRYPTION: ${REQUIRE_UPLOAD_ENCRYPTION:-true}
       DATASET_UPLOADS_BUCKET: ${DATASET_UPLOADS_BUCKET:-ml-artifacts}
       DATASET_UPLOADS_PREFIX: ${DATASET_UPLOADS_PREFIX:-inference/uploads}
@@ -135,6 +135,8 @@ services:
       MODEL_REGISTRY_URI: ${MODEL_REGISTRY_URI}
       AIRFLOW_SHARED_DIR: /opt/airflow/shared
       AIRFLOW_SHARED_VOLUME: t25--4m_mlops_airflow_shared
+      AIRFLOW_DOCKER_NETWORK: mlops_network
+      AIRFLOW_TRAIN_IMAGE: ${INFERENCE_SERVICE_IMAGE:-mlops/inference-service:latest}
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - airflow_logs:/opt/airflow/logs
@@ -166,8 +168,6 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
-      S3_SSE_MODE: ${S3_SSE_MODE:-AES256}
-      S3_SSE_KMS_KEY_ID: ${S3_SSE_KMS_KEY_ID:-}
       DATASET_UPLOADS_BUCKET: ${DATASET_UPLOADS_BUCKET:-ml-artifacts}
       DATASET_UPLOADS_PREFIX: ${DATASET_UPLOADS_PREFIX:-inference/uploads}
       RETRAIN_SOURCE_DATASETS_BUCKET: ${RETRAIN_SOURCE_DATASETS_BUCKET:-ml-artifacts}
@@ -208,8 +208,6 @@ services:
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
       SEGMENT_RESULTS_BUCKET: ${SEGMENT_RESULTS_BUCKET:-ml-artifacts}
       SEGMENT_RESULTS_PREFIX: ${SEGMENT_RESULTS_PREFIX:-inference/segments}
-      S3_SSE_MODE: ${S3_SSE_MODE:-AES256}
-      S3_SSE_KMS_KEY_ID: ${S3_SSE_KMS_KEY_ID:-}
     ports:
       - "8001:8001"
     depends_on:
@@ -250,8 +248,6 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
-      S3_SSE_MODE: ${S3_SSE_MODE:-AES256}
-      S3_SSE_KMS_KEY_ID: ${S3_SSE_KMS_KEY_ID:-}
     depends_on:
       minio-init:
         condition: service_completed_successfully
@@ -270,9 +266,8 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
-      S3_SSE_MODE: ${S3_SSE_MODE:-AES256}
-      S3_SSE_KMS_KEY_ID: ${S3_SSE_KMS_KEY_ID:-}
-      REQUIRE_UPLOAD_ENCRYPTION: ${REQUIRE_UPLOAD_ENCRYPTION:-true}
+      # MinIO без KMS: не передаём S3_SSE_* — иначе PutObject с SSE даёт NotImplemented
+      REQUIRE_UPLOAD_ENCRYPTION: ${REQUIRE_UPLOAD_ENCRYPTION:-false}
       DATASET_UPLOADS_BUCKET: ${DATASET_UPLOADS_BUCKET:-ml-artifacts}
       DATASET_UPLOADS_PREFIX: ${DATASET_UPLOADS_PREFIX:-inference/uploads}
       RETRAIN_SOURCE_DATASETS_BUCKET: ${RETRAIN_SOURCE_DATASETS_BUCKET:-ml-artifacts}

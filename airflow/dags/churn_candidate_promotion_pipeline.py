@@ -12,7 +12,8 @@ from urllib.request import Request, urlopen
 import pandas as pd
 from airflow.decorators import dag, task
 from airflow.operators.python import get_current_context
-from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
+
+from train_runtime import make_train_operator
 
 PROJECT_ROOT = Path("/opt/project")
 INFERENCE_SERVICE_ROOT = PROJECT_ROOT / "services" / "inference-service"
@@ -46,8 +47,6 @@ AIRFLOW_TRAIN_IMAGE = os.getenv(
     "AIRFLOW_TRAIN_IMAGE",
     os.getenv("INFERENCE_SERVICE_IMAGE", "mlops/inference-service:latest"),
 )
-AIRFLOW_K8S_NAMESPACE = os.getenv("AIRFLOW_K8S_NAMESPACE", "mlops-app")
-AIRFLOW_K8S_SERVICE_ACCOUNT = os.getenv("AIRFLOW_K8S_SERVICE_ACCOUNT", "airflow-runner")
 SOURCE_DATASETS_BUCKET = os.getenv("RETRAIN_SOURCE_DATASETS_BUCKET", "ml-artifacts")
 SOURCE_DATASETS_PREFIX = os.getenv("RETRAIN_SOURCE_DATASETS_PREFIX", DEFAULT_RETRAIN_SOURCE_PREFIX)
 NON_PROMOTED_PREFIX = os.getenv("RETRAIN_NON_PROMOTED_PREFIX", DEFAULT_RETRAIN_NON_PROMOTED_PREFIX)
@@ -433,19 +432,12 @@ def churn_candidate_promotion_pipeline():
 
     ready = wait_for_inference()
     prepared = prepare_candidate_dataset()
-    train_task = KubernetesPodOperator(
+    train_task = make_train_operator(
         task_id="train_candidate_model",
         name="train-candidate-model",
         image=AIRFLOW_TRAIN_IMAGE,
-        cmds=["python"],
-        arguments=["-c", _train_command_template()],
-        namespace=AIRFLOW_K8S_NAMESPACE,
-        service_account_name=AIRFLOW_K8S_SERVICE_ACCOUNT,
+        arguments_template=_train_command_template(),
         env_vars=_train_environment(),
-        in_cluster=True,
-        get_logs=True,
-        is_delete_operator_pod=True,
-        do_xcom_push=False,
     )
     trained = after_training(prepared, train_task.output)
     decision = compare_candidate_to_production(trained)

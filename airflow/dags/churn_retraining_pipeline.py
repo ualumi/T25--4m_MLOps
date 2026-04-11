@@ -10,7 +10,8 @@ from urllib.request import Request, urlopen
 
 from airflow.decorators import dag, task
 from airflow.operators.python import get_current_context
-from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
+
+from train_runtime import make_train_operator
 
 PROJECT_ROOT = Path("/opt/project")
 INFERENCE_SERVICE_ROOT = PROJECT_ROOT / "services" / "inference-service"
@@ -28,8 +29,6 @@ AIRFLOW_TRAIN_IMAGE = os.getenv(
     "AIRFLOW_TRAIN_IMAGE",
     os.getenv("INFERENCE_SERVICE_IMAGE", "mlops/inference-service:latest"),
 )
-AIRFLOW_K8S_NAMESPACE = os.getenv("AIRFLOW_K8S_NAMESPACE", "mlops-app")
-AIRFLOW_K8S_SERVICE_ACCOUNT = os.getenv("AIRFLOW_K8S_SERVICE_ACCOUNT", "airflow-runner")
 MODEL_REGISTRY_URI = os.getenv("MODEL_REGISTRY_URI", DEFAULT_MODEL_REGISTRY_URI)
 
 default_args = {
@@ -187,19 +186,12 @@ def churn_retraining_pipeline():
 
     ready = wait_for_inference()
     prepared = prepare_retraining_run()
-    train_task = KubernetesPodOperator(
+    train_task = make_train_operator(
         task_id="train_model",
         name="train-model",
         image=AIRFLOW_TRAIN_IMAGE,
-        cmds=["python"],
-        arguments=["-c", _train_command_template()],
-        namespace=AIRFLOW_K8S_NAMESPACE,
-        service_account_name=AIRFLOW_K8S_SERVICE_ACCOUNT,
+        arguments_template=_train_command_template(),
         env_vars=_train_environment(),
-        in_cluster=True,
-        get_logs=True,
-        is_delete_operator_pod=True,
-        do_xcom_push=False,
     )
 
     ready >> prepared >> train_task
