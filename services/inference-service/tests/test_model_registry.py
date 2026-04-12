@@ -41,9 +41,7 @@ def _entry(version: str, status: str = "candidate", roc_auc: float = 0.7) -> dic
         },
         production_model_type="LGBMClassifier",
         baseline_model_type="Pipeline",
-        source_dataset_uris=[
-            f"s3://ml-artifacts/training/{version}.csv"
-        ],
+        source_dataset_uris=[f"s3://ml-artifacts/training/{version}.csv"],
     )
 
 

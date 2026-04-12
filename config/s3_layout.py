@@ -100,9 +100,9 @@ def rewrite_legacy_s3_uri(uri: str) -> str:
         return f"s3://{bucket}/training"
 
     if len(parts) >= 2 and parts[0] == "training" and parts[1] == "non-promoted":
-        destination = PurePosixPath(DEFAULT_RETRAIN_NON_PROMOTED_PREFIX) / PurePosixPath(
-            *parts[2:]
-        )
+        destination = PurePosixPath(
+            DEFAULT_RETRAIN_NON_PROMOTED_PREFIX
+        ) / PurePosixPath(*parts[2:])
         return f"s3://{bucket}/{destination.as_posix()}"
 
     if parts[:2] == ("datasets", "non-promoted"):
@@ -176,7 +176,9 @@ def build_versioned_artifact_uris(
 ) -> dict[str, str]:
     model_registry_uri = rewrite_legacy_s3_uri(model_registry_uri)
     bucket, _registry_key = parse_s3_uri(model_registry_uri)
-    version_prefix = (PurePosixPath(DEFAULT_VERSION_ARCHIVE_PREFIX) / version).as_posix()
+    version_prefix = (
+        PurePosixPath(DEFAULT_VERSION_ARCHIVE_PREFIX) / version
+    ).as_posix()
     return {
         "production_model_uri": f"s3://{bucket}/{version_prefix}/model.joblib",
         "baseline_model_uri": f"s3://{bucket}/{version_prefix}/baseline.joblib",

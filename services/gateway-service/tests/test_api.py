@@ -76,7 +76,9 @@ class StubDatasetStore:
             }
         )
         if subfolder:
-            return f"s3://ml-artifacts/inference/uploads/{user_id}/{subfolder}/{filename}"
+            return (
+                f"s3://ml-artifacts/inference/uploads/{user_id}/{subfolder}/{filename}"
+            )
         return f"s3://ml-artifacts/inference/uploads/{user_id}/{filename}"
 
 
@@ -251,10 +253,7 @@ def test_predict_upload_json() -> None:
     body = response.json()
     assert len(body["predictions"]) == 2
     assert body["predictions"][0]["client_id"] == "c-1"
-    assert (
-        body["dataset_uri"]
-        == "s3://ml-artifacts/inference/uploads/u-1/clients.json"
-    )
+    assert body["dataset_uri"] == "s3://ml-artifacts/inference/uploads/u-1/clients.json"
     assert (
         body["result_uri"]
         == "s3://ml-artifacts/inference/results/u-1/by-upload/prediction-result.json"
@@ -299,10 +298,7 @@ def test_predict_upload_csv() -> None:
     body = response.json()
     assert len(body["predictions"]) == 2
     assert body["predictions"][1]["client_id"] == "c-2"
-    assert (
-        body["dataset_uri"]
-        == "s3://ml-artifacts/inference/uploads/u-1/clients.csv"
-    )
+    assert body["dataset_uri"] == "s3://ml-artifacts/inference/uploads/u-1/clients.csv"
     assert (
         body["result_uri"]
         == "s3://ml-artifacts/inference/results/u-1/by-upload/prediction-result.json"
@@ -394,8 +390,7 @@ def test_upload_training_dataset() -> None:
     assert body["status"] == "uploaded"
     assert body["record_count"] == 2
     assert (
-        body["dataset_uri"]
-        == "s3://ml-artifacts/training/"
+        body["dataset_uri"] == "s3://ml-artifacts/training/"
         "a1b2c3d4e5f647899a0b1c2d3e4f5067-training.csv"
     )
     assert body["dataset_encryption"]["enabled"] is True
