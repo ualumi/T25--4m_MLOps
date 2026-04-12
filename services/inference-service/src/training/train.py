@@ -389,8 +389,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--artifact-output-prefix",
         default=None,
         help=(
-            "Optional s3://bucket/prefix — all artifacts are written under this prefix "
-            "(model.joblib, baseline.joblib, training_metrics.json, …) like production/."
+            "Optional s3://bucket/prefix — all artifacts are written under "
+            "this prefix (model.joblib, baseline.joblib, training_metrics.json, "
+            "…) like production/."
         ),
     )
     parser.add_argument(

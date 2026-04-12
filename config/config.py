@@ -35,7 +35,10 @@ def _float_env(name: str, default: float) -> float:
 
 
 def _normalize_retrain_source_prefix(raw: str | None) -> str:
-    """Старые значения вида training/uploads → только training/ (csv без user_id в ключе)."""
+    """Старые значения: training/uploads → только training/.
+
+    CSV без user_id в ключе.
+    """
     if raw is None or not raw.strip():
         return DEFAULT_RETRAIN_SOURCE_PREFIX
     value = raw.strip().strip("/")
@@ -47,7 +50,7 @@ def _normalize_retrain_source_prefix(raw: str | None) -> str:
 
 
 def normalize_retrain_source_prefix(raw: str | None) -> str:
-    """Тот же префикс, что у Gateway при записи в S3 (Airflow должен читать из того же пути)."""
+    """Тот же префикс, что у Gateway в S3. Airflow читает из того же пути."""
     return _normalize_retrain_source_prefix(raw)
 
 

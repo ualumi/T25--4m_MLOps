@@ -28,7 +28,8 @@ DEFAULT_MODEL_REGISTRY_URI = (
     f"s3://{DEFAULT_BUCKET}/models/production/model_registry.json"
 )
 
-# Кандидат в production и архив прежней production (см. DAG training_to_production_pipeline).
+# Кандидат в production и архив прежней production
+# (см. DAG training_to_production_pipeline).
 DEFAULT_CANDIDATE_TO_PRODUCTION_PREFIX = "models/candidate_to_production"
 DEFAULT_VERSION_ARCHIVE_PREFIX = "models/version"
 

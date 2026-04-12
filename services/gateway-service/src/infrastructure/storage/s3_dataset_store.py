@@ -80,7 +80,10 @@ class S3DatasetStore:
         data: bytes,
         content_type: str = "application/octet-stream",
     ) -> str:
-        """Один объект под префиксом: ``{prefix}/{uuid}-{filename}`` (без user_id и подпапок)."""
+        """Один объект под префиксом: ``{prefix}/{uuid}-{filename}``.
+
+        Без user_id и подпапок.
+        """
         self.ensure_bucket()
         safe_filename = self._sanitize_filename(filename)
         key = f"{self._prefix}/{uuid4().hex}-{safe_filename}"
