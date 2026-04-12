@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import logging
 import sys
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -47,6 +48,7 @@ from src.interfaces.api.schemas import (  # noqa: E402
 )
 
 app = FastAPI(title="Gateway Service", version="1.0.0")
+_logger = logging.getLogger(__name__)
 
 
 def _validate_upload_encryption_config() -> None:
@@ -66,8 +68,22 @@ def _validate_upload_encryption_config() -> None:
 
 
 @app.on_event("startup")
-def _validate_encryption_config_on_startup() -> None:
+def _on_gateway_startup() -> None:
     _validate_upload_encryption_config()
+    cfg = get_gateway_config()
+    if cfg.s3_endpoint_url:
+        _logger.info(
+            "S3: endpoint=%s — training uploads → s3://%s/%s/<uuid>-<file>",
+            cfg.s3_endpoint_url,
+            cfg.retrain_source_bucket,
+            cfg.retrain_source_prefix,
+        )
+    else:
+        _logger.warning(
+            "S3_ENDPOINT_URL не задан: boto3 будет обращаться к публичному AWS S3, "
+            "а не к MinIO. Для Docker: S3_ENDPOINT_URL=http://minio:9000; "
+            "с хоста: http://127.0.0.1:9000"
+        )
 
 
 @lru_cache(maxsize=1)
@@ -280,7 +296,7 @@ def _run_batch_prediction(
         request_payload=payload.model_dump(),
         response_payload=response_payload,
         result_kind=result_kind,
-        endpoint="/predict/upload" if result_kind == "uploads" else "/predict/batch",
+        endpoint="/predict/upload" if result_kind == "by-upload" else "/predict/batch",
         record_count=len(payload.clients),
         dataset_encryption=dataset_encryption,
     )
@@ -507,12 +523,11 @@ async def predict_upload(
         filename=filename,
         data=raw_content,
         content_type=file.content_type or "application/octet-stream",
-        subfolder="uploads",
     )
     return _run_batch_prediction(
         payload,
         dataset_uri=dataset_uri,
-        result_kind="uploads",
+        result_kind="by-upload",
         dataset_encryption={
             "enabled": bool(get_gateway_config().s3_sse_mode),
             "mode": get_gateway_config().s3_sse_mode,
@@ -543,13 +558,12 @@ async def upload_training_dataset(
     dataset_store = getattr(app.state, "retraining_dataset_store", None) or (
         get_retraining_dataset_store()
     )
-    dataset_uri = dataset_store.save_dataset(
-        user_id=user_id,
+    dataset_uri = dataset_store.save_dataset_flat(
         filename=filename,
         data=raw_content,
         content_type=file.content_type or "text/csv",
-        subfolder="training",
     )
+    _logger.info("Training dataset uploaded: %s", dataset_uri)
     return {
         "dataset_uri": dataset_uri,
         "record_count": record_count,

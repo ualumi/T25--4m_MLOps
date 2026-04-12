@@ -67,7 +67,7 @@ def _artifact_uris() -> dict[str, str]:
         "feature_schema_uri": "s3://ml-artifacts/models/production/feature_schema.json",
         "feature_stats_uri": "s3://ml-artifacts/models/production/feature_stats.json",
         "model_info_uri": "s3://ml-artifacts/models/production/model_info.json",
-        "model_registry_uri": "s3://ml-artifacts/models/registry/model_registry.json",
+        "model_registry_uri": "s3://ml-artifacts/models/production/model_registry.json",
     }
 
 
@@ -139,13 +139,13 @@ def test_train_main_creates_models_and_report(tmp_path, monkeypatch, capsys) -> 
     )
     version = model_info["version"]
     assert model_info["production_model"]["uri"].endswith(
-        f"/models/versions/{version}/model.joblib"
+        f"/models/version/{version}/model.joblib"
     )
     assert model_info["feature_schema_uri"].endswith(
-        f"/models/versions/{version}/feature_schema.json"
+        f"/models/version/{version}/feature_schema.json"
     )
     assert model_info["feature_stats_uri"].endswith(
-        f"/models/versions/{version}/feature_stats.json"
+        f"/models/version/{version}/feature_stats.json"
     )
     assert model_info["model_registry_uri"] == artifact_uris["model_registry_uri"]
     assert model_info["top_share"] == 0.5
@@ -165,7 +165,7 @@ def test_train_main_creates_models_and_report(tmp_path, monkeypatch, capsys) -> 
         == artifact_uris["model_registry_uri"]
     )
     assert model_registry["models"][0]["artifacts"]["production_model_uri"].endswith(
-        f"/models/versions/{version}/model.joblib"
+        f"/models/version/{version}/model.joblib"
     )
 
     stdout = capsys.readouterr().out

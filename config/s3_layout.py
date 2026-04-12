@@ -9,8 +9,8 @@ from urllib.parse import urlparse
 DEFAULT_BUCKET = "ml-artifacts"
 
 DEFAULT_DATASET_UPLOAD_PREFIX = "inference/uploads"
-DEFAULT_RETRAIN_SOURCE_PREFIX = "training/uploads"
-DEFAULT_RETRAIN_NON_PROMOTED_PREFIX = "training/non-promoted"
+DEFAULT_RETRAIN_SOURCE_PREFIX = "training"
+DEFAULT_RETRAIN_NON_PROMOTED_PREFIX = "retrain/non-promoted"
 DEFAULT_PREDICTION_RESULTS_PREFIX = "inference/results"
 DEFAULT_SEGMENT_RESULTS_PREFIX = "inference/segments"
 
@@ -25,8 +25,12 @@ DEFAULT_FEATURE_STATS_URI = (
 )
 DEFAULT_MODEL_INFO_URI = f"s3://{DEFAULT_BUCKET}/models/production/model_info.json"
 DEFAULT_MODEL_REGISTRY_URI = (
-    f"s3://{DEFAULT_BUCKET}/models/registry/model_registry.json"
+    f"s3://{DEFAULT_BUCKET}/models/production/model_registry.json"
 )
+
+# Кандидат в production и архив прежней production (см. DAG training_to_production_pipeline).
+DEFAULT_CANDIDATE_TO_PRODUCTION_PREFIX = "models/candidate_to_production"
+DEFAULT_VERSION_ARCHIVE_PREFIX = "models/version"
 
 
 def parse_s3_uri(uri: str) -> tuple[str, str]:
@@ -34,24 +38,6 @@ def parse_s3_uri(uri: str) -> tuple[str, str]:
     if parsed.scheme != "s3" or not parsed.netloc or not parsed.path.lstrip("/"):
         raise ValueError(f"Invalid S3 URI: {uri}")
     return parsed.netloc, parsed.path.lstrip("/")
-
-
-def build_versioned_artifact_uris(
-    model_registry_uri: str,
-    version: str,
-) -> dict[str, str]:
-    bucket, registry_key = parse_s3_uri(model_registry_uri)
-    models_root = _models_root_from_registry_key(registry_key)
-    version_prefix = (models_root / "versions" / version).as_posix()
-    return {
-        "production_model_uri": f"s3://{bucket}/{version_prefix}/model.joblib",
-        "baseline_model_uri": f"s3://{bucket}/{version_prefix}/baseline.joblib",
-        "report_uri": f"s3://{bucket}/{version_prefix}/training_metrics.json",
-        "feature_schema_uri": f"s3://{bucket}/{version_prefix}/feature_schema.json",
-        "feature_stats_uri": f"s3://{bucket}/{version_prefix}/feature_stats.json",
-        "model_info_uri": f"s3://{bucket}/{version_prefix}/model_info.json",
-        "model_registry_uri": model_registry_uri,
-    }
 
 
 # pylint: disable=too-many-return-statements,too-many-branches
@@ -90,10 +76,55 @@ def rewrite_legacy_s3_uri(uri: str) -> str:
         )
         return f"s3://{bucket}/{destination.as_posix()}"
 
+    if len(parts) >= 2 and parts[0] == "training" and parts[1] == "uploads":
+        destination = PurePosixPath(DEFAULT_RETRAIN_SOURCE_PREFIX) / PurePosixPath(
+            *parts[2:]
+        )
+        return f"s3://{bucket}/{destination.as_posix()}"
+
+    if len(parts) >= 2 and parts[0] == "retrain" and parts[1] == "uploads":
+        destination = PurePosixPath(DEFAULT_RETRAIN_SOURCE_PREFIX) / PurePosixPath(
+            *parts[2:]
+        )
+        return f"s3://{bucket}/{destination.as_posix()}"
+
+    if (
+        len(parts) >= 3
+        and parts[0] == "upload"
+        and parts[1] == "datasets"
+        and parts[2] == "training"
+    ):
+        rest = PurePosixPath(*parts[3:]).as_posix()
+        if rest:
+            return f"s3://{bucket}/training/{rest}"
+        return f"s3://{bucket}/training"
+
+    if len(parts) >= 2 and parts[0] == "training" and parts[1] == "non-promoted":
+        destination = PurePosixPath(DEFAULT_RETRAIN_NON_PROMOTED_PREFIX) / PurePosixPath(
+            *parts[2:]
+        )
+        return f"s3://{bucket}/{destination.as_posix()}"
+
     if parts[:2] == ("datasets", "non-promoted"):
         suffix = PurePosixPath(*parts[2:]) if len(parts) > 2 else PurePosixPath()
         destination = PurePosixPath(DEFAULT_RETRAIN_NON_PROMOTED_PREFIX) / suffix
         return f"s3://{bucket}/{destination.as_posix()}"
+
+    if parts[:2] == ("models", "registry") and path.name == "model_registry.json":
+        return DEFAULT_MODEL_REGISTRY_URI.replace(DEFAULT_BUCKET, bucket, 1)
+
+    if len(parts) >= 3 and parts[0] == "models" and parts[1] == "versions":
+        rest = PurePosixPath(*parts[2:]).as_posix()
+        return f"s3://{bucket}/models/version/{rest}"
+
+    if (
+        len(parts) >= 4
+        and parts[0] == "models"
+        and parts[1] == "production"
+        and parts[2] == "versions"
+    ):
+        rest = PurePosixPath(*parts[3:]).as_posix()
+        return f"s3://{bucket}/models/version/{rest}"
 
     if key == "reports/training_metrics.json":
         return DEFAULT_REPORT_URI.replace(DEFAULT_BUCKET, bucket, 1)
@@ -119,7 +150,7 @@ def rewrite_legacy_s3_uri(uri: str) -> str:
     if (
         len(parts) == 3
         and parts[0] == "models"
-        and parts[1] not in {"production", "registry", "versions"}
+        and parts[1] not in {"production", "registry", "versions", "version"}
     ):
         filename_map = {
             "lgb_model.joblib": "model.joblib",
@@ -132,11 +163,29 @@ def rewrite_legacy_s3_uri(uri: str) -> str:
         mapped_name = filename_map.get(parts[2])
         if mapped_name is not None:
             versioned_key = (
-                PurePosixPath("models") / "versions" / parts[1] / mapped_name
+                PurePosixPath(DEFAULT_VERSION_ARCHIVE_PREFIX) / parts[1] / mapped_name
             )
             return f"s3://{bucket}/{versioned_key.as_posix()}"
 
     return uri
+
+
+def build_versioned_artifact_uris(
+    model_registry_uri: str,
+    version: str,
+) -> dict[str, str]:
+    model_registry_uri = rewrite_legacy_s3_uri(model_registry_uri)
+    bucket, _registry_key = parse_s3_uri(model_registry_uri)
+    version_prefix = (PurePosixPath(DEFAULT_VERSION_ARCHIVE_PREFIX) / version).as_posix()
+    return {
+        "production_model_uri": f"s3://{bucket}/{version_prefix}/model.joblib",
+        "baseline_model_uri": f"s3://{bucket}/{version_prefix}/baseline.joblib",
+        "report_uri": f"s3://{bucket}/{version_prefix}/training_metrics.json",
+        "feature_schema_uri": f"s3://{bucket}/{version_prefix}/feature_schema.json",
+        "feature_stats_uri": f"s3://{bucket}/{version_prefix}/feature_stats.json",
+        "model_info_uri": f"s3://{bucket}/{version_prefix}/model_info.json",
+        "model_registry_uri": model_registry_uri,
+    }
 
 
 def rewrite_payload_uris(payload: Any) -> Any:
@@ -147,10 +196,3 @@ def rewrite_payload_uris(payload: Any) -> Any:
     if isinstance(payload, str):
         return rewrite_legacy_s3_uri(payload)
     return payload
-
-
-def _models_root_from_registry_key(registry_key: str) -> PurePosixPath:
-    path = PurePosixPath(registry_key)
-    if len(path.parts) >= 2 and path.parts[-2] == "registry":
-        return PurePosixPath(*path.parts[:-2])
-    return path.parent

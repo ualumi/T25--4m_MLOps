@@ -34,6 +34,31 @@ def _float_env(name: str, default: float) -> float:
         raise ValueError(f"Environment variable {name} must be a float.") from exc
 
 
+def _normalize_retrain_source_prefix(raw: str | None) -> str:
+    """Старые значения вида training/uploads → только training/ (csv без user_id в ключе)."""
+    if raw is None or not raw.strip():
+        return DEFAULT_RETRAIN_SOURCE_PREFIX
+    value = raw.strip().strip("/")
+    if value == "training/uploads" or value.startswith("training/uploads/"):
+        return DEFAULT_RETRAIN_SOURCE_PREFIX
+    if value in {"retrain/uploads", "upload/datasets/training"}:
+        return DEFAULT_RETRAIN_SOURCE_PREFIX
+    return value
+
+
+def normalize_retrain_source_prefix(raw: str | None) -> str:
+    """Тот же префикс, что у Gateway при записи в S3 (Airflow должен читать из того же пути)."""
+    return _normalize_retrain_source_prefix(raw)
+
+
+def _optional_s3_endpoint_url() -> str | None:
+    raw = os.getenv("S3_ENDPOINT_URL")
+    if raw is None:
+        return None
+    stripped = raw.strip()
+    return stripped if stripped else None
+
+
 def _bool_env(name: str, default: bool) -> bool:
     raw = os.getenv(name)
     if raw is None:
@@ -98,7 +123,7 @@ def get_gateway_config() -> GatewayConfig:
             "GATEWAY_DATABASE_URL",
             "postgresql://postgres:postgres@postgres:5432/gateway_db",
         ),
-        s3_endpoint_url=os.getenv("S3_ENDPOINT_URL"),
+        s3_endpoint_url=_optional_s3_endpoint_url(),
         s3_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
         s3_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
         s3_region=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
@@ -112,8 +137,8 @@ def get_gateway_config() -> GatewayConfig:
         retrain_source_bucket=os.getenv(
             "RETRAIN_SOURCE_DATASETS_BUCKET", "ml-artifacts"
         ),
-        retrain_source_prefix=os.getenv(
-            "RETRAIN_SOURCE_DATASETS_PREFIX", DEFAULT_RETRAIN_SOURCE_PREFIX
+        retrain_source_prefix=_normalize_retrain_source_prefix(
+            os.getenv("RETRAIN_SOURCE_DATASETS_PREFIX")
         ),
         prediction_results_bucket=os.getenv(
             "PREDICTION_RESULTS_BUCKET", "ml-artifacts"
@@ -133,7 +158,7 @@ def get_inference_config() -> InferenceConfig:
         host=os.getenv("INFERENCE_HOST", "0.0.0.0"),
         port=_int_env("INFERENCE_PORT", 8001),
         model_uri=os.getenv("MODEL_URI", DEFAULT_MODEL_URI),
-        s3_endpoint_url=os.getenv("S3_ENDPOINT_URL"),
+        s3_endpoint_url=_optional_s3_endpoint_url(),
         s3_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
         s3_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
         s3_region=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),

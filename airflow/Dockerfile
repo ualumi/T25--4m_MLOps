@@ -13,8 +13,9 @@ COPY airflow/dags /opt/airflow/dags
 
 USER airflow
 ENV PYTHONPATH="/opt/project:/opt/project/services/inference-service"
+# mount_tmp_dir on DockerOperator needs a recent provider; avoids bind-mount of /tmp/airflowtmp* (breaks with remote/docker-outside-docker).
 RUN pip install --no-cache-dir \
-    apache-airflow-providers-docker \
+    "apache-airflow-providers-docker>=3.7.0" \
     boto3 \
     pandas \
     scikit-learn \

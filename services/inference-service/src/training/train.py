@@ -73,6 +73,7 @@ class TrainingRunContext:
     version: str
     promote: bool
     source_dataset_uris: list[str]
+    registry_load_uri: str | None = None
 
 
 def build_baseline_model() -> Pipeline:
@@ -235,10 +236,10 @@ def build_model_registry(
     run_context: TrainingRunContext,
 ) -> dict[str, Any]:
     artifact_store = build_artifact_store()
-    existing_registry = load_model_registry(
-        artifact_store,
-        run_context.artifact_uris.model_registry_uri,
+    registry_uri = (
+        run_context.registry_load_uri or run_context.artifact_uris.model_registry_uri
     )
+    existing_registry = load_model_registry(artifact_store, registry_uri)
     new_entry = build_model_registry_entry(
         version=run_context.version,
         status="production" if run_context.promote else "candidate",
@@ -384,6 +385,19 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="S3 URI of source dataset used for this training run. Can be repeated.",
     )
+    parser.add_argument(
+        "--artifact-output-prefix",
+        default=None,
+        help=(
+            "Optional s3://bucket/prefix — all artifacts are written under this prefix "
+            "(model.joblib, baseline.joblib, training_metrics.json, …) like production/."
+        ),
+    )
+    parser.add_argument(
+        "--registry-read-uri",
+        default=None,
+        help="Registry JSON to merge from (defaults to --model-registry-uri).",
+    )
     return parser
 
 
@@ -403,14 +417,31 @@ def _build_versioned_artifact_uris(
     )
 
 
+def _artifact_uris_under_prefix(prefix_uri: str) -> TrainingArtifactUris:
+    base = prefix_uri.rstrip("/")
+    return TrainingArtifactUris(
+        production_model_uri=f"{base}/model.joblib",
+        baseline_model_uri=f"{base}/baseline.joblib",
+        report_uri=f"{base}/training_metrics.json",
+        feature_schema_uri=f"{base}/feature_schema.json",
+        feature_stats_uri=f"{base}/feature_stats.json",
+        model_info_uri=f"{base}/model_info.json",
+        model_registry_uri=f"{base}/model_registry.json",
+    )
+
+
 def main() -> None:
     args = build_parser().parse_args()
     generated_at = datetime.now(timezone.utc).isoformat()
     version = args.version or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    artifact_uris = _build_versioned_artifact_uris(
-        model_registry_uri=args.model_registry_uri,
-        version=version,
-    )
+    if args.artifact_output_prefix:
+        artifact_uris = _artifact_uris_under_prefix(args.artifact_output_prefix)
+    else:
+        artifact_uris = _build_versioned_artifact_uris(
+            model_registry_uri=args.model_registry_uri,
+            version=version,
+        )
+    registry_read_uri = args.registry_read_uri or args.model_registry_uri
     run_context = TrainingRunContext(
         train_path=args.train_path,
         test_path=args.test_path,
@@ -426,6 +457,7 @@ def main() -> None:
         version=version,
         promote=args.promote,
         source_dataset_uris=list(args.source_dataset_uri),
+        registry_load_uri=registry_read_uri,
     )
 
     baseline_model, baseline_metrics = train_and_evaluate_model(

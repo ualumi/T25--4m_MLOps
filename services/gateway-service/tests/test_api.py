@@ -75,21 +75,24 @@ class StubDatasetStore:
                 "subfolder": subfolder,
             }
         )
-        return f"s3://ml-artifacts/inference/uploads/{user_id}/{subfolder}/{filename}"
+        if subfolder:
+            return f"s3://ml-artifacts/inference/uploads/{user_id}/{subfolder}/{filename}"
+        return f"s3://ml-artifacts/inference/uploads/{user_id}/{filename}"
 
 
 class StubRetrainingDatasetStore(StubDatasetStore):
-    def save_dataset(self, user_id, filename, data, content_type, subfolder=None):
+    def save_dataset_flat(self, filename, data, content_type="text/csv"):
         self.saved.append(
             {
-                "user_id": user_id,
                 "filename": filename,
                 "data": data,
                 "content_type": content_type,
-                "subfolder": subfolder,
             }
         )
-        return f"s3://ml-artifacts/training/uploads/{user_id}/{subfolder}/{filename}"
+        return (
+            "s3://ml-artifacts/training/"
+            "a1b2c3d4e5f647899a0b1c2d3e4f5067-training.csv"
+        )
 
 
 class StubSessionStore:
@@ -250,15 +253,15 @@ def test_predict_upload_json() -> None:
     assert body["predictions"][0]["client_id"] == "c-1"
     assert (
         body["dataset_uri"]
-        == "s3://ml-artifacts/inference/uploads/u-1/uploads/clients.json"
+        == "s3://ml-artifacts/inference/uploads/u-1/clients.json"
     )
     assert (
         body["result_uri"]
-        == "s3://ml-artifacts/inference/results/u-1/uploads/prediction-result.json"
+        == "s3://ml-artifacts/inference/results/u-1/by-upload/prediction-result.json"
     )
     assert app.state.dataset_store.saved[0]["filename"] == "clients.json"
-    assert app.state.dataset_store.saved[0]["subfolder"] == "uploads"
-    assert app.state.prediction_result_store.saved[0]["subfolder"] == "uploads"
+    assert app.state.dataset_store.saved[0]["subfolder"] is None
+    assert app.state.prediction_result_store.saved[0]["subfolder"] == "by-upload"
     metadata = app.state.prediction_result_store.saved[0]["payload"]["metadata"]
     assert metadata["endpoint"] == "/predict/upload"
     assert metadata["record_count"] == 2
@@ -298,14 +301,14 @@ def test_predict_upload_csv() -> None:
     assert body["predictions"][1]["client_id"] == "c-2"
     assert (
         body["dataset_uri"]
-        == "s3://ml-artifacts/inference/uploads/u-1/uploads/clients.csv"
+        == "s3://ml-artifacts/inference/uploads/u-1/clients.csv"
     )
     assert (
         body["result_uri"]
-        == "s3://ml-artifacts/inference/results/u-1/uploads/prediction-result.json"
+        == "s3://ml-artifacts/inference/results/u-1/by-upload/prediction-result.json"
     )
     assert app.state.dataset_store.saved[0]["content_type"] == "text/csv"
-    assert app.state.prediction_result_store.saved[0]["subfolder"] == "uploads"
+    assert app.state.prediction_result_store.saved[0]["subfolder"] == "by-upload"
     metadata = app.state.prediction_result_store.saved[0]["payload"]["metadata"]
     assert metadata["endpoint"] == "/predict/upload"
     assert metadata["record_count"] == 2
@@ -392,11 +395,12 @@ def test_upload_training_dataset() -> None:
     assert body["record_count"] == 2
     assert (
         body["dataset_uri"]
-        == "s3://ml-artifacts/training/uploads/u-1/training/training.csv"
+        == "s3://ml-artifacts/training/"
+        "a1b2c3d4e5f647899a0b1c2d3e4f5067-training.csv"
     )
     assert body["dataset_encryption"]["enabled"] is True
     assert body["dataset_encryption"]["mode"] == "AES256"
-    assert app.state.retraining_dataset_store.saved[0]["subfolder"] == "training"
+    assert "user_id" not in app.state.retraining_dataset_store.saved[0]
 
     del app.state.session_store
     del app.state.retraining_dataset_store

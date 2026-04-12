@@ -215,48 +215,20 @@ docker compose up --build
 
 Таким образом деплой поднимает сразу полную рабочую схему проекта: входной сервис, ML-сервис, `PostgreSQL`, `S3`-совместимое хранилище артефактов и модель, подключённую к inference-слою.
 
-## Airflow DAG
+## Airflow
 
-Для регулярного переобучения в проект добавлен `Airflow`-pipeline `churn_retraining_pipeline`.
+В проекте один DAG — `training_to_production_pipeline`: обучение на пользовательских CSV из `S3` (`RETRAIN_SOURCE_DATASETS_PREFIX`, по умолчанию `training/`), валидация и merge в `models/candidate_to_production/<key>/`, обучение кандидата, сравнение `roc_auc` с production (порог `PROMOTION_MIN_ROC_DELTA`), архив прежней production в `models/version/`, промоушен и перезагрузка inference.
 
-Он выполняет четыре шага:
+Расписание — переменная `AIRFLOW_TRAINING_TO_PRODUCTION_SCHEDULE` (по умолчанию раз в месяц: `0 3 1 * *`).
 
-1. ждёт готовности `inference-service`;
-2. запускает `python -m src.training.train` на текущих датасетах;
-3. вызывает internal endpoint `/internal/reload-model`, чтобы сервис сбросил кэш модели;
-4. проверяет `/health` после обновления.
+Display-названия версий в реестре: текущая production — `Основная`; остальные — по дате создания (`DD.MM.YYYY`).
 
-По умолчанию DAG запускается по расписанию `0 2 * * *`, а изменить его можно через `AIRFLOW_RETRAIN_SCHEDULE` в `.env`.
+Airflow UI: `http://localhost:8080`, учётные данные — `AIRFLOW_ADMIN_USERNAME` и `AIRFLOW_ADMIN_PASSWORD`.
 
-Airflow UI доступен по адресу `http://localhost:8080`, логин и пароль задаются переменными `AIRFLOW_ADMIN_USERNAME` и `AIRFLOW_ADMIN_PASSWORD`.
-
-## DAG с promotion модели
-
-В проект также добавлен DAG `churn_candidate_promotion_pipeline` для controlled retraining на пользовательских датасетах.
-
-Он выполняет следующие шаги:
-
-1. читает новые датасеты из `S3` по префиксу `RETRAIN_SOURCE_DATASETS_PREFIX`;
-2. валидирует, что датасет имеет ту же схему, что и тренировочные данные, и содержит `churn`;
-3. объединяет все новые валидные датасеты в один candidate training set;
-4. обучает новую candidate-версию модели и сохраняет артефакты в `models/versions/<version>/...`;
-5. сравнивает candidate-модель с текущей production по `roc_auc` на одном и том же тестовом датасете;
-6. если `roc_auc` улучшился, переводит candidate в production и обновляет стабильные URI;
-7. если `roc_auc` не улучшился, переносит использованные датасеты в `RETRAIN_NON_PROMOTED_PREFIX`.
-
-Таким образом в `S3` появляется история версий модели, а production переключается только после успешного сравнения метрики.
-
-Display-названия версий устроены так:
-
-- текущая production-версия отображается как `Основная`;
-- остальные версии отображаются по дате создания в формате `DD.MM.YYYY`.
-
-По умолчанию `churn_candidate_promotion_pipeline` запускается раз в месяц, по cron `0 0 1 * *`. Изменить расписание можно через `AIRFLOW_PROMOTION_SCHEDULE` в `.env`.
-
-Для загрузки данных теперь используются два разных сценария:
+Для загрузки данных используются два сценария:
 
 - `/predict/upload` — upload датасета для batch inference, ожидает `client_id` и признаки клиентов;
-- `/datasets/upload-training` — upload обучающего CSV для retraining DAG, ожидает `user_id`, все feature columns и `churn`.
+- `/datasets/upload-training` — upload обучающего CSV для `training_to_production_pipeline`, ожидает `user_id`, все feature columns и `churn`.
 
 Актуальная структура объектов в `S3`:
 
@@ -267,7 +239,7 @@ ml-artifacts/
     results/
     segments/
   training/
-    uploads/
+  retrain/
     non-promoted/
   models/
     production/
@@ -277,16 +249,15 @@ ml-artifacts/
       feature_schema.json
       feature_stats.json
       training_metrics.json
-    versions/
-      <version>/
-        model.joblib
-        baseline.joblib
-        model_info.json
-        feature_schema.json
-        feature_stats.json
-        training_metrics.json
-    registry/
       model_registry.json
+      versions/
+        <version>/
+          model.joblib
+          baseline.joblib
+          model_info.json
+          feature_schema.json
+          feature_stats.json
+          training_metrics.json
 ```
 
 ## Проверка качества кода

@@ -6,6 +6,7 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 from uuid import uuid4
 
 import boto3
@@ -24,9 +25,11 @@ class S3DatasetStore:
         region: str = "us-east-1",
         sse_mode: str | None = None,
         sse_kms_key_id: str | None = None,
+        object_key_style: Literal["nested", "flat"] = "nested",
     ) -> None:
         self._bucket = bucket
         self._prefix = prefix.strip("/")
+        self._object_key_style = object_key_style
         self._region = region
         self._sse_mode = (sse_mode or "").strip() or None
         self._sse_kms_key_id = (sse_kms_key_id or "").strip() or None
@@ -70,6 +73,24 @@ class S3DatasetStore:
             content_type=content_type,
             subfolder=subfolder,
         )
+
+    def save_dataset_flat(
+        self,
+        filename: str,
+        data: bytes,
+        content_type: str = "application/octet-stream",
+    ) -> str:
+        """Один объект под префиксом: ``{prefix}/{uuid}-{filename}`` (без user_id и подпапок)."""
+        self.ensure_bucket()
+        safe_filename = self._sanitize_filename(filename)
+        key = f"{self._prefix}/{uuid4().hex}-{safe_filename}"
+        put_kwargs = self._build_put_kwargs(
+            key=key,
+            data=data,
+            content_type=content_type,
+        )
+        self._client.put_object(**put_kwargs)
+        return f"s3://{self._bucket}/{key}"
 
     def save_json_artifact(
         self,
@@ -131,6 +152,8 @@ class S3DatasetStore:
         filename: str,
         subfolder: str | None = None,
     ) -> str:
+        if self._object_key_style == "flat":
+            return f"{self._prefix}/{uuid4().hex}-{filename}"
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         return "/".join(
             part

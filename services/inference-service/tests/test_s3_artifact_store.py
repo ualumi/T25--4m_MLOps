@@ -122,7 +122,7 @@ def test_s3_artifact_store_load_json_requires_object(monkeypatch) -> None:
 
     try:
         artifact_store.load_json(
-            "s3://ml-artifacts/models/registry/model_registry.json"
+            "s3://ml-artifacts/models/production/model_registry.json"
         )
         assert False, "ValueError was expected"
     except ValueError as exc:

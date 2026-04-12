@@ -14,25 +14,25 @@ def _entry(version: str, status: str = "candidate", roc_auc: float = 0.7) -> dic
         feature_count=28,
         artifacts={
             "production_model_uri": (
-                f"s3://ml-artifacts/models/versions/{version}/model.joblib"
+                f"s3://ml-artifacts/models/version/{version}/model.joblib"
             ),
             "baseline_model_uri": (
-                f"s3://ml-artifacts/models/versions/{version}/baseline.joblib"
+                f"s3://ml-artifacts/models/version/{version}/baseline.joblib"
             ),
             "report_uri": (
-                f"s3://ml-artifacts/models/versions/{version}/training_metrics.json"
+                f"s3://ml-artifacts/models/version/{version}/training_metrics.json"
             ),
             "feature_schema_uri": (
-                f"s3://ml-artifacts/models/versions/{version}/feature_schema.json"
+                f"s3://ml-artifacts/models/version/{version}/feature_schema.json"
             ),
             "feature_stats_uri": (
-                f"s3://ml-artifacts/models/versions/{version}/feature_stats.json"
+                f"s3://ml-artifacts/models/version/{version}/feature_stats.json"
             ),
             "model_info_uri": (
-                f"s3://ml-artifacts/models/versions/{version}/model_info.json"
+                f"s3://ml-artifacts/models/version/{version}/model_info.json"
             ),
             "model_registry_uri": (
-                "s3://ml-artifacts/models/registry/model_registry.json"
+                "s3://ml-artifacts/models/production/model_registry.json"
             ),
         },
         metrics_summary={
@@ -41,7 +41,9 @@ def _entry(version: str, status: str = "candidate", roc_auc: float = 0.7) -> dic
         },
         production_model_type="LGBMClassifier",
         baseline_model_type="Pipeline",
-        source_dataset_uris=[f"s3://ml-artifacts/training/uploads/{version}.csv"],
+        source_dataset_uris=[
+            f"s3://ml-artifacts/training/{version}.csv"
+        ],
     )
 
 
